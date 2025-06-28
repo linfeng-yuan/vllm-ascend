@@ -63,7 +63,6 @@ def generate_attn_mask(max_seq_len: int, dtype=torch.float16, mask_value=None):
 class AttentionMaskBuilder:
 
     def __init__(self, attn_mask: torch.Tensor):
-        self._seq_len_cached = attn_mask.shape[0]
         self.attn_mask_cache = attn_mask
         self.splitfuse_mask_value = -10000
 
@@ -76,8 +75,7 @@ class AttentionMaskBuilder:
 
     def update_attn_cache(self, seqlen: int, dtype: torch.dtype,
                           device: torch.device):
-        if seqlen > self._seq_len_cached or self.attn_mask_cache.dtype != dtype:
-            self._seq_len_cached = seqlen
+        if seqlen > self.attn_mask_cache.shape[0] or self.attn_mask_cache.dtype != dtype:
             self.attn_mask_cache = generate_attn_mask(seqlen, dtype)
         if self.attn_mask_cache.device != device:
             self.attn_mask_cache = self.attn_mask_cache.to(device)
@@ -107,7 +105,7 @@ class AttentionMaskBuilder:
         device,
     ) -> torch.Tensor:
         max_seq_len = max(seq_lens, default=0)
-        if max_seq_len <= self._seq_len_cached:
+        if max_seq_len <= self.attn_mask_cache.shape[0]:
             self.update_attn_cache(max_seq_len, dtype, device)
             # FIXME: Currently the mask value of chunked-prefill situation and Prefill-Only situation
             # is not the same. Fix this in the future when kernel is ready.
