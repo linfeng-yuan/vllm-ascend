@@ -29,6 +29,14 @@ from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.distributed.parallel_state import get_mc2_group
 from vllm_ascend.flash_common3_context import get_flash_common3_context
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts, zero_experts_compute
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (
+    FusedExpertsRequest,
+    MoEDispatchSpec,
+    MoEMlpSpec,
+    MoEQuantSpec,
+    MoEQuantTensors,
+    MoEWeightPack,
+)
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
 from .base import AscendLinearScheme, AscendMoEScheme, QuantType
@@ -249,19 +257,34 @@ class AscendW8A8DynamicFusedMoEMethod(AscendMoEScheme):
             w2_scale = [layer.fused_w2_scale] if fused_scale_flag else [layer.w2_weight_scale]
 
         final_hidden_states = moe_comm_method.fused_experts(
-            hidden_states=x,
-            pertoken_scale=pertoken_scale,
-            w1=w1,
-            w1_scale=w1_scale,
-            w2=w2,
-            w2_scale=w2_scale,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            use_int8_w8a8=True,
-            expert_map=expert_map,
-            log2phy=log2phy,
-            dynamic_eplb=self.dynamic_eplb,
-            mc2_mask=kwargs.get("mc2_mask"),
+            request=FusedExpertsRequest(
+                hidden_states=x,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                weights=MoEWeightPack(
+                    w1=w1,
+                    w2=w2,
+                ),
+                dispatch=MoEDispatchSpec(
+                    expert_map=expert_map,
+                    global_redundant_expert_num=global_redundant_expert_num,
+                    mc2_mask=kwargs.get("mc2_mask"),
+                    apply_router_weight_on_input=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                    log2phy=log2phy,
+                    pertoken_scale=pertoken_scale,
+                ),
+                mlp=MoEMlpSpec(
+                    activation="silu",
+                    need_trans=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                ),
+                quant=MoEQuantSpec(quant_type=QuantType.W8A8),
+                quant_tensors=MoEQuantTensors(
+                    w1_scale=[layer.fused_w1_scale] if fused_scale_flag else w1_scale,
+                    w2_scale=[layer.fused_w2_scale] if fused_scale_flag else w2_scale,
+                ),
+            )
         )
         if zero_expert_num > 0 and zero_expert_type is not None:
             final_hidden_states += zero_expert_result
