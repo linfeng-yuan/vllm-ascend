@@ -437,22 +437,22 @@ class AscendFusedMoE(FusedMoE):
 
                 set_flash_common3_context(topk_weights=topk_weights, topk_ids=topk_ids)
 
-        hidden_states, router_logits, mc2_mask, context_metadata = forward_context.moe_comm_method.prepare(
+        prepare_output = forward_context.moe_comm_method.prepare(
             hidden_states=hidden_states,
             router_logits=router_logits,
             replace_allreduce=forward_context.flash_comm_v1_enabled,
             enable_shared_expert_dp=self.enable_shared_expert_dp,
             quant_type=self.quant_type,
         )
+        hidden_states = prepare_output.hidden_states
+        router_logits = prepare_output.router_logits
+        mc2_mask = prepare_output.mc2_mask
+        context_metadata = prepare_output.context_metadata
+        pertoken_scale = prepare_output.pertoken_scale
 
         # Make sure the default stream waits for the gate stream to finish.
         if self.multistream_overlap_gate:
             torch.npu.current_stream().wait_stream(AscendFusedMoE.gate_stream)
-
-        if isinstance(hidden_states, tuple):
-            hidden_states, pertoken_scale = hidden_states
-        else:
-            pertoken_scale = None
 
         # Matrix multiply.
         fused_experts_results: FusedExpertsResult = self.quant_method.apply(

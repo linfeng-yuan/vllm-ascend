@@ -7,6 +7,7 @@ from tests.ut.base import TestBase
 from vllm_ascend.ops.fused_moe.moe_comm_method import (AllGatherCommImpl,
                                                        AlltoAllCommImpl,
                                                        MC2CommImpl)
+from vllm_ascend.ops.fused_moe.moe_runtime_args import PrepareOutput
 from vllm_ascend.quantization.methods.base import QuantType
 from vllm_ascend.ops.fused_moe.token_dispatcher import (TokenCombineResult,
                                                         TokenDispatchResult)
@@ -45,8 +46,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = (torch.randn(4, 8),
-                                                 torch.randn(4, 2), None, None)
+        mock_pf_instance.prepare.return_value = PrepareOutput(
+            hidden_states=torch.randn(4, 8),
+            router_logits=torch.randn(4, 2),
+            mc2_mask=None,
+            context_metadata=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -60,8 +64,9 @@ class TestMoECommMethod(TestBase):
         # Test prepare method
         hidden_states = torch.randn(3, 8)
         router_logits = torch.randn(3, 2)
-        h_out, r_out, mc2_mask, context_metadata = comm_impl.prepare(
-            hidden_states, router_logits)
+        prepare_output = comm_impl.prepare(hidden_states, router_logits)
+        h_out = prepare_output.hidden_states
+        context_metadata = prepare_output.context_metadata
 
         # Verify prepare was called with correct arguments
         mock_pf_instance.prepare.assert_called_once_with(
@@ -86,10 +91,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = (torch.randn(4, 8),
-                                                 torch.randn(4, 2),
-                                                 torch.tensor([1, 0, 1,
-                                                               0]), None)
+        mock_pf_instance.prepare.return_value = PrepareOutput(
+            hidden_states=torch.randn(4, 8),
+            router_logits=torch.randn(4, 2),
+            mc2_mask=torch.tensor([1, 0, 1, 0]),
+            context_metadata=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -103,8 +109,9 @@ class TestMoECommMethod(TestBase):
         # Test prepare method
         hidden_states = torch.randn(3, 8)
         router_logits = torch.randn(3, 2)
-        h_out, r_out, mc2_mask, context_metadata = comm_impl.prepare(
-            hidden_states, router_logits)
+        prepare_output = comm_impl.prepare(hidden_states, router_logits)
+        h_out = prepare_output.hidden_states
+        context_metadata = prepare_output.context_metadata
 
         # Verify prepare was called with correct arguments
         mock_pf_instance.prepare.assert_called_once_with(
@@ -133,8 +140,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = (torch.randn(4, 8),
-                                                 torch.randn(4, 2), None, None)
+        mock_pf_instance.prepare.return_value = PrepareOutput(
+            hidden_states=torch.randn(4, 8),
+            router_logits=torch.randn(4, 2),
+            mc2_mask=None,
+            context_metadata=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -148,8 +158,7 @@ class TestMoECommMethod(TestBase):
         # Test prepare method
         hidden_states = torch.randn(3, 8)
         router_logits = torch.randn(3, 2)
-        h_out, r_out, mc2_mask, context_metadata = comm_impl.prepare(
-            hidden_states, router_logits)
+        _ = comm_impl.prepare(hidden_states, router_logits)
 
         # Verify prepare was called with correct arguments
         mock_pf_instance.prepare.assert_called_once_with(
@@ -174,8 +183,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = (torch.randn(4, 8),
-                                                 torch.randn(4, 2), None)
+        mock_pf_instance.prepare.return_value = PrepareOutput(
+            hidden_states=torch.randn(4, 8),
+            router_logits=torch.randn(4, 2),
+            mc2_mask=None,
+            context_metadata=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
