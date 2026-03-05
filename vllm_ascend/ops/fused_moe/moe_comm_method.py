@@ -26,6 +26,7 @@ from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
+    MlpComputeRequest,
     MoEDispatchSpec,
     MoEMlpSpec,
     MoEMxfpSpec,
@@ -201,48 +202,21 @@ class MoECommMethod(ABC):
         )
         dispatch_results = self.token_dispatcher.token_dispatch(request=dispatch_request)
 
-        mxfp_spec = request.quant.mxfp
-        act_quant_type = torch.float8_e4m3fn
-        weight_quant_type = torch.float8_e4m3fn
-        scale_type = None
-        per_token_scale_type = None
-        use_bf16 = request.hidden_states.dtype == torch.bfloat16
-        if mxfp_spec is not None:
-            act_quant_type = mxfp_spec.act_quant_type or act_quant_type
-            weight_quant_type = mxfp_spec.weight_quant_type or weight_quant_type
-            scale_type = mxfp_spec.scale_dtype
-            per_token_scale_type = mxfp_spec.per_token_scale_dtype
-            use_bf16 = mxfp_spec.use_bf16
+        mlp_request = MlpComputeRequest(
+            hidden_states=dispatch_results.hidden_states,
+            group_list=dispatch_results.group_list,
+            group_list_type=dispatch_results.group_list_type,
+            dynamic_scale=dispatch_results.dynamic_scale,
+            topk_scales=dispatch_results.topk_scales,
+            weights=request.weights,
+            quant=request.quant,
+            quant_tensors=request.quant_tensors,
+            mlp=request.mlp,
+        )
 
         mlp_output = unified_apply_mlp(
-            hidden_states=dispatch_results.hidden_states,
-            w1=request.weights.w1,
-            w1_scale=request.quant_tensors.w1_scale,
-            w2=request.weights.w2,
-            w2_scale=request.quant_tensors.w2_scale,
-            w1_bias=request.weights.w1_bias,
-            w2_bias=request.weights.w2_bias,
-            activation=request.mlp.activation,
-            group_list=dispatch_results.group_list,
-            dynamic_scale=dispatch_results.dynamic_scale,
-            group_list_type=dispatch_results.group_list_type,
-            w1_scale_bias=request.quant_tensors.w1_scale_bias,
-            w2_scale_bias=request.quant_tensors.w2_scale_bias,
-            w1_offset=request.quant_tensors.w1_offset,
-            w2_offset=request.quant_tensors.w2_offset,
-            topk_scales=dispatch_results.topk_scales,
-            with_quant=request.quant.is_quant,
+            request=mlp_request,
             fusion=request.quant.quant_type in (QuantType.W8A8, QuantType.MXFP8) and self.use_fusion_ops,
-            need_trans=request.mlp.need_trans,
-            dynamic_eplb=request.mlp.dynamic_eplb,
-            use_mxfp_quant=request.quant.is_mxfp,
-            act_quant_type=act_quant_type,
-            weight_quant_type=weight_quant_type,
-            scale_type=scale_type,
-            per_token_scale_type=per_token_scale_type,
-            round_mode=request.quant.reserved.round_mode,
-            use_bf16=use_bf16,
-            rollback_quant_config=request.quant.reserved.rollback_quant_config,
         )
 
         before_combine_evt = torch.npu.current_stream().record_event()
