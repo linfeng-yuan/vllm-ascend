@@ -218,9 +218,13 @@ class AscendFusedMoE310(FusedMoE):
         assert self.quant_method is not None
         assert self.routed_scaling_factor == 1.0, "routed_scaling_factor != 1.0 is not supported."
 
-        hidden_states, router_logits, _, context_metadata = _EXTRA_CTX.moe_comm_method.prepare(
+        prepare_output = _EXTRA_CTX.moe_comm_method.prepare(
             hidden_states=hidden_states, router_logits=router_logits, quant_type=self.quant_type
         )
+        hidden_states = prepare_output.hidden_states
+        router_logits = prepare_output.router_logits
+        pertoken_scale = prepare_output.pertoken_scale
+        context_metadata = prepare_output.context_metadata
 
         # Matrix multiply.
         fused_experts_results: FusedExpertsResult = self.quant_method.apply(
@@ -238,6 +242,7 @@ class AscendFusedMoE310(FusedMoE):
             global_num_experts=self.global_num_experts,
             expert_map=self.local_expert_map,
             apply_router_weight_on_input=self.apply_router_weight_on_input,
+            pertoken_scale=pertoken_scale,
         )
 
         routed_out = _EXTRA_CTX.moe_comm_method.finalize(
