@@ -24,6 +24,7 @@ from tests.ut.base import TestBase
 from vllm_ascend.ascend_forward_context import MoECommType
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
 from vllm_ascend.ops.fused_moe.fused_moe import AscendUnquantizedFusedMoEMethod
+from vllm_ascend.ops.fused_moe.moe_runtime_args import PrepareOutput
 from vllm_ascend.ops.fused_moe.moe_mlp import (cumsum_group_list,
                                                unified_apply_mlp)
 from vllm_ascend.utils import AscendDeviceType, adapt_patch
@@ -77,7 +78,13 @@ def mock_dist_env(mocker: MockerFixture):
     mock_moe_comm_method = MagicMock()
 
     def mock_prepare(hidden_states, router_logits, **kwargs):
-        return hidden_states, router_logits
+        return PrepareOutput(
+            hidden_states=hidden_states,
+            router_logits=router_logits,
+            mc2_mask=kwargs.get("mc2_mask"),
+            context_metadata=None,
+            pertoken_scale=None,
+        )
 
     mock_moe_comm_method.prepare.side_effect = mock_prepare
 
