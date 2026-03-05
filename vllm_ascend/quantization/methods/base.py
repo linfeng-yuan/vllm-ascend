@@ -18,20 +18,11 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from enum import Enum
 from typing import Any
 
 import torch
 
-
-class QuantType(Enum):
-    """Quantization type enum for MoE schemes."""
-
-    NONE = 0
-    W8A8 = 1
-    W4A8 = 2
-    MXFP8 = 3
-    W4A16 = 4
+from vllm_ascend.quantization.quant_type import QuantType
 
 
 class AscendLinearScheme(ABC):

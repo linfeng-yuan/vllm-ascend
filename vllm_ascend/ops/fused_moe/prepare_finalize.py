@@ -32,7 +32,7 @@ from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.distributed.utils import fc3_all_gather_and_maybe_unpad_impl
 from vllm_ascend.ops.fused_moe.moe_runtime_args import PrepareOutput
-from vllm_ascend.quantization.methods.base import QuantType
+from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import enable_sp, npu_stream_switch, prefill_context_parallel_enable
 
 
