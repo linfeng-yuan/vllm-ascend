@@ -25,8 +25,16 @@ from vllm.forward_context import get_forward_context
 
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (
+    FusedExpertsRequest,
+    MoEDispatchSpec,
+    MoEMlpSpec,
+    MoEQuantSpec,
+    MoEQuantTensors,
+    MoEWeightPack,
+)
 
-from .base import AscendMoEScheme
+from .base import AscendMoEScheme, QuantType
 from .registry import register_scheme
 
 
@@ -217,20 +225,35 @@ class AscendW4A16FusedMoEMethod(AscendMoEScheme):
 
         moe_comm_method = get_forward_context().moe_comm_method
         return moe_comm_method.fused_experts(
-            hidden_states=x,
-            w1=layer.w13_weight_packed,
-            w2=layer.w2_weight_packed,
-            w1_scale=layer.w13_weight_scale,
-            w2_scale=layer.w2_weight_scale,
-            w1_offset=layer.w13_weight_offset,
-            w2_offset=layer.w2_weight_offset,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            use_int4_w4a16=True,
-            expert_map=expert_map,
-            log2phy=log2phy,
-            dynamic_eplb=self.dynamic_eplb,
-            mc2_mask=kwargs.get("mc2_mask"),
+            request=FusedExpertsRequest(
+                hidden_states=x,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                weights=MoEWeightPack(
+                    w1=layer.w13_weight_packed,
+                    w2=layer.w2_weight_packed,
+                ),
+                dispatch=MoEDispatchSpec(
+                    expert_map=expert_map,
+                    global_redundant_expert_num=global_redundant_expert_num,
+                    mc2_mask=kwargs.get("mc2_mask"),
+                    apply_router_weight_on_input=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                    log2phy=log2phy,
+                ),
+                mlp=MoEMlpSpec(
+                    activation="silu",
+                    need_trans=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                ),
+                quant=MoEQuantSpec(quant_type=QuantType.W4A16),
+                quant_tensors=MoEQuantTensors(
+                    w1_scale=layer.w13_weight_scale,
+                    w2_scale=layer.w2_weight_scale,
+                    w1_offset=layer.w13_weight_offset,
+                    w2_offset=layer.w2_weight_offset,
+                ),
+            )
         )
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:

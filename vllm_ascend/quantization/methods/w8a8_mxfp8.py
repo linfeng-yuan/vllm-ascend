@@ -31,6 +31,15 @@ from vllm_ascend.device.mxfp_compat import (
     ensure_mxfp8_moe_available,
 )
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (
+    FusedExpertsRequest,
+    MoEDispatchSpec,
+    MoEMlpSpec,
+    MoEMxfpSpec,
+    MoEQuantSpec,
+    MoEQuantTensors,
+    MoEWeightPack,
+)
 
 from .base import AscendLinearScheme, AscendMoEScheme, QuantType
 from .registry import register_scheme
@@ -189,23 +198,42 @@ class AscendW8A8MXFP8DynamicFusedMoEMethod(AscendMoEScheme):
 
         moe_comm_method = get_forward_context().moe_comm_method
         return moe_comm_method.fused_experts(
-            hidden_states=x,
-            w1=layer.w13_weight,
-            w1_scale=layer.w13_weight_scale,
-            w2=layer.w2_weight,
-            w2_scale=layer.w2_weight_scale,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            use_int8_w8a8=False,
-            expert_map=expert_map,
-            log2phy=log2phy,
-            dynamic_eplb=self.dynamic_eplb,
-            mc2_mask=kwargs.get("mc2_mask"),
-            use_mxfp_quant=True,
-            act_quant_type=torch.float8_e4m3fn,
-            weight_quant_type=torch.float8_e4m3fn,
-            scale_type=FLOAT8_E8M0FNU_DTYPE,
-            per_token_scale_type=FLOAT8_E8M0FNU_DTYPE,
+            request=FusedExpertsRequest(
+                hidden_states=x,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                weights=MoEWeightPack(
+                    w1=layer.w13_weight,
+                    w2=layer.w2_weight,
+                ),
+                dispatch=MoEDispatchSpec(
+                    expert_map=expert_map,
+                    global_redundant_expert_num=global_redundant_expert_num,
+                    mc2_mask=kwargs.get("mc2_mask"),
+                    apply_router_weight_on_input=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                    log2phy=log2phy,
+                ),
+                mlp=MoEMlpSpec(
+                    activation="silu",
+                    need_trans=False,
+                    dynamic_eplb=self.dynamic_eplb,
+                ),
+                quant=MoEQuantSpec(
+                    quant_type=QuantType.MXFP8,
+                    mxfp=MoEMxfpSpec(
+                        act_quant_type=torch.float8_e4m3fn,
+                        weight_quant_type=torch.float8_e4m3fn,
+                        scale_dtype=FLOAT8_E8M0FNU_DTYPE,
+                        per_token_scale_dtype=FLOAT8_E8M0FNU_DTYPE,
+                        use_bf16=(x.dtype == torch.bfloat16),
+                    ),
+                ),
+                quant_tensors=MoEQuantTensors(
+                    w1_scale=layer.w13_weight_scale,
+                    w2_scale=layer.w2_weight_scale,
+                ),
+            )
         )
 
     def process_weights_after_loading(self, layer):
