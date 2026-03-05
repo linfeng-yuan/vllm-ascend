@@ -7,7 +7,12 @@ from tests.ut.base import TestBase
 from vllm_ascend.ops.fused_moe.moe_comm_method import (AllGatherCommImpl,
                                                        AlltoAllCommImpl,
                                                        MC2CommImpl)
-from vllm_ascend.ops.fused_moe.moe_runtime_args import PrepareOutput
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (FusedExpertsRequest,
+                                                        MoEDispatchSpec,
+                                                        MoEMlpSpec,
+                                                        MoEQuantSpec,
+                                                        MoEWeightPack,
+                                                        PrepareOutput)
 from vllm_ascend.quantization.methods.base import QuantType
 from vllm_ascend.ops.fused_moe.token_dispatcher import (TokenCombineResult,
                                                         TokenDispatchResult)
@@ -220,12 +225,26 @@ class TestMoECommMethod(TestBase):
         w1 = w1.contiguous()
         w2 = w2.contiguous()
 
-        result = comm_impl.fused_experts(hidden_states=hidden_states,
-                                         w1=[w1],
-                                         w2=[w2],
-                                         topk_weights=topk_weights,
-                                         topk_ids=topk_ids,
-                                         activation="silu")
+        result = comm_impl.fused_experts(request=FusedExpertsRequest(
+            hidden_states=hidden_states,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            weights=MoEWeightPack(
+                w1=[w1],
+                w2=[w2],
+            ),
+            dispatch=MoEDispatchSpec(
+                expert_map=None,
+                global_redundant_expert_num=0,
+                mc2_mask=None,
+                apply_router_weight_on_input=False,
+                dynamic_eplb=False,
+            ),
+            mlp=MoEMlpSpec(
+                activation="silu",
+            ),
+            quant=MoEQuantSpec(),
+        ))
 
         # Verify result shape
         self.assertEqual(result.routed_out.shape, (4, 8))
