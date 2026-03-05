@@ -237,7 +237,10 @@ class AscendMoEScheme(ABC):
         enable_force_load_balance: bool = False,
         log2phy: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
-        **kwargs,
+        pertoken_scale: Any | None = None,
+        activation: str = "silu",
+        apply_router_weight_on_input: bool = False,
+        mc2_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Forward computation for MoE layer.
 
@@ -260,7 +263,10 @@ class AscendMoEScheme(ABC):
             enable_force_load_balance: Whether to force load balancing.
             log2phy: Logical to physical expert mapping.
             global_redundant_expert_num: Number of redundant experts.
-            **kwargs: Additional keyword arguments.
+            pertoken_scale: Optional per-token activation scale from prepare stage.
+            activation: Expert MLP activation type.
+            apply_router_weight_on_input: Whether to pre-scale hidden states by router weights.
+            mc2_mask: Optional mask used by MC2 dispatch.
 
         Returns:
             Output tensor after MoE computation.

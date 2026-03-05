@@ -190,7 +190,9 @@ class AscendW8A8DynamicFusedMoEMethod(AscendMoEScheme):
         log2phy: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         pertoken_scale: Any | None = None,
-        **kwargs,
+        activation: str = "silu",
+        apply_router_weight_on_input: bool = False,
+        mc2_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         zero_expert_num = getattr(layer, "zero_expert_num", 0)
         zero_expert_type = getattr(layer, "zero_expert_type", None)
@@ -268,14 +270,14 @@ class AscendW8A8DynamicFusedMoEMethod(AscendMoEScheme):
                 dispatch=MoEDispatchSpec(
                     expert_map=expert_map,
                     global_redundant_expert_num=global_redundant_expert_num,
-                    mc2_mask=kwargs.get("mc2_mask"),
-                    apply_router_weight_on_input=False,
+                    mc2_mask=mc2_mask,
+                    apply_router_weight_on_input=apply_router_weight_on_input,
                     dynamic_eplb=self.dynamic_eplb,
                     log2phy=log2phy,
                     pertoken_scale=pertoken_scale,
                 ),
                 mlp=MoEMlpSpec(
-                    activation="silu",
+                    activation=activation,
                     need_trans=False,
                     dynamic_eplb=self.dynamic_eplb,
                 ),
