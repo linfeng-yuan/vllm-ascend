@@ -37,7 +37,7 @@ from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEQuantSpec,
     TokenDispatchRequest,
 )
-from vllm_ascend.quantization.methods.base import QuantType
+from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type, is_hierarchical_communication_enabled
 
 

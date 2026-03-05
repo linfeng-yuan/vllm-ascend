@@ -50,7 +50,7 @@ from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEQuantSpec,
     MoEWeightPack,
 )
-from vllm_ascend.quantization.methods.base import QuantType
+from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import (
     enable_sp,
     maybe_trans_nz,

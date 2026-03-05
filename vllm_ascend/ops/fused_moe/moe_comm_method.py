@@ -49,8 +49,8 @@ from vllm_ascend.ops.fused_moe.token_dispatcher import (
     TokenDispatcherWithAllGather,
     TokenDispatcherWithMC2,
 )
-from vllm_ascend.quantization.methods.base import QuantType
 from vllm_ascend.quantization.quant_parser import parse_mxfp_quant_params
+from vllm_ascend.quantization.quant_type import QuantType
 
 _MoECommMethods: dict[MoECommType | None, MoECommMethod] = {}
 

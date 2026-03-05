@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 import torch
 
-from vllm_ascend.quantization.methods.base import QuantType
+from vllm_ascend.quantization.quant_type import QuantType
 
 
 @dataclass(frozen=True, slots=True)
