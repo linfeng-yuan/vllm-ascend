@@ -31,6 +31,13 @@ from vllm.distributed.parallel_state import get_ep_group
 from vllm_ascend.device.device_op import DeviceOperator
 from vllm_ascend.distributed.parallel_state import get_mc2_group
 from vllm_ascend.ops.fused_moe.comm_utils import async_all_to_all, gather_from_sequence_parallel_region
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (
+    MoEDispatchSpec,
+    MoEMxfpSpec,
+    MoEQuantSpec,
+    TokenDispatchRequest,
+)
+from vllm_ascend.quantization.methods.base import QuantType
 from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type, is_hierarchical_communication_enabled
 
 
@@ -73,9 +80,10 @@ class MoETokenDispatcher(ABC):
     @abstractmethod
     def token_dispatch(
         self,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
+        request: TokenDispatchRequest | None = None,
+        hidden_states: torch.Tensor | None = None,
+        topk_weights: torch.Tensor | None = None,
+        topk_ids: torch.Tensor | None = None,
         expert_map: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         mc2_mask: torch.Tensor | None = None,
@@ -83,6 +91,7 @@ class MoETokenDispatcher(ABC):
         with_quant: bool = False,
         dynamic_eplb: bool = False,
         pertoken_scale: torch.Tensor | None = None,
+        **kwargs,
     ) -> TokenDispatchResult:
         raise NotImplementedError("Dispatch function not implemented.")
 
@@ -91,6 +100,56 @@ class MoETokenDispatcher(ABC):
         self, hidden_states: torch.Tensor, context_metadata: dict, bias: torch.Tensor | None = None
     ) -> TokenCombineResult:
         raise NotImplementedError("Combine function not implemented.")
+
+    @staticmethod
+    def _build_legacy_dispatch_request(
+        *,
+        hidden_states: torch.Tensor | None,
+        topk_weights: torch.Tensor | None,
+        topk_ids: torch.Tensor | None,
+        expert_map: torch.Tensor | None,
+        global_redundant_expert_num: int,
+        mc2_mask: torch.Tensor | None,
+        apply_router_weight_on_input: bool,
+        with_quant: bool,
+        dynamic_eplb: bool,
+        pertoken_scale: torch.Tensor | None,
+        **kwargs,
+    ) -> TokenDispatchRequest:
+        assert hidden_states is not None, "hidden_states is required."
+        assert topk_weights is not None, "topk_weights is required."
+        assert topk_ids is not None, "topk_ids is required."
+
+        use_mxfp_quant = kwargs.get("use_mxfp_quant", False)
+        quant_type = QuantType.NONE
+        mxfp_spec = None
+        if use_mxfp_quant:
+            quant_type = QuantType.MXFP8
+            mxfp_spec = MoEMxfpSpec(
+                act_quant_type=kwargs.get("y_dtype"),
+            )
+        elif with_quant:
+            # Dispatcher only needs quant semantic (int quant vs none), not exact int mode.
+            quant_type = QuantType.W8A8
+
+        return TokenDispatchRequest(
+            hidden_states=hidden_states,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            dispatch=MoEDispatchSpec(
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                dynamic_eplb=dynamic_eplb,
+                pertoken_scale=pertoken_scale,
+            ),
+            quant=MoEQuantSpec(
+                quant_type=quant_type,
+                comm_quant_mode=kwargs.get("comm_quant_mode"),
+                mxfp=mxfp_spec,
+            ),
+        )
 
 
 class TokenDispatcherWithMC2(MoETokenDispatcher):
@@ -131,25 +190,23 @@ class TokenDispatcherWithMC2(MoETokenDispatcher):
 
     def get_dispatch_mc2_kwargs(
         self,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
-        expert_map: torch.Tensor,
-        mc2_mask: torch.Tensor,
-        global_redundant_expert_num: int = 0,
-        **kwargs,
+        request: TokenDispatchRequest,
     ):
-        use_mxfp_quant = kwargs.get("use_mxfp_quant", False)
-        comm_quant_mode = kwargs.get("comm_quant_mode")
+        hidden_states = request.hidden_states
+        topk_weights = request.topk_weights
+        topk_ids = request.topk_ids
+        expert_map = request.dispatch.expert_map
+        global_redundant_expert_num = request.dispatch.global_redundant_expert_num
+        comm_quant_mode = request.quant.comm_quant_mode
+
+        assert expert_map is not None, "expert_map is required for MC2 token dispatch."
         # NOTE: quant_mode differs by quant feature:
         # - Legacy int communication quantization uses quant_mode=2.
         # - A5 MXFP8 communication uses quant_mode=4.
-        # TODO(linfeng): The quantization-related parameters need to be consolidated into a single
-        # dataclass, and the FP8 MoE code path should be integrated into it going forward.
         if comm_quant_mode is not None:
             quant_mode = comm_quant_mode
         elif self.with_quant:
-            quant_mode = 4 if self.a5_need_extra_args and use_mxfp_quant else 2
+            quant_mode = 4 if self.a5_need_extra_args and request.quant.is_mxfp else 2
         else:
             quant_mode = 0
         self.moe_expert_num = len(expert_map) + global_redundant_expert_num
@@ -178,10 +235,10 @@ class TokenDispatcherWithMC2(MoETokenDispatcher):
                     "tp_rank_id": 0,
                 }
             )
-        if self.a5_need_extra_args and use_mxfp_quant:
-            y_dtype = kwargs.get("y_dtype")
-            if self.with_quant:
-                y_dtype = torch.float8_e4m3fn if y_dtype is None else y_dtype
+        if self.a5_need_extra_args and request.quant.is_mxfp:
+            y_dtype = torch.float8_e4m3fn
+            if request.quant.mxfp is not None and request.quant.mxfp.act_quant_type is not None:
+                y_dtype = request.quant.mxfp.act_quant_type
             stage1_kwargs.update({"tp_world_size": 1, "tp_rank_id": 0, "y_dtype": y_dtype})
         if self.need_expert_scale or self.a5_need_extra_args:
             stage1_kwargs.update(
@@ -195,9 +252,10 @@ class TokenDispatcherWithMC2(MoETokenDispatcher):
 
     def token_dispatch(
         self,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
+        request: TokenDispatchRequest | None = None,
+        hidden_states: torch.Tensor | None = None,
+        topk_weights: torch.Tensor | None = None,
+        topk_ids: torch.Tensor | None = None,
         expert_map: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         mc2_mask: torch.Tensor | None = None,
@@ -207,10 +265,33 @@ class TokenDispatcherWithMC2(MoETokenDispatcher):
         pertoken_scale: torch.Tensor | None = None,
         **kwargs,
     ):
-        self.with_quant = with_quant
-        kwargs_mc2 = self.get_dispatch_mc2_kwargs(
-            hidden_states, topk_weights, topk_ids, expert_map, mc2_mask, global_redundant_expert_num, **kwargs
-        )
+        if request is not None and not isinstance(request, TokenDispatchRequest):
+            # Backward compatibility for positional legacy calls:
+            # token_dispatch(hidden_states, topk_weights, topk_ids, ...)
+            hidden_states, topk_weights, topk_ids, expert_map = (
+                request,
+                hidden_states,
+                topk_weights,
+                topk_ids if expert_map is None else expert_map,
+            )
+            request = None
+
+        if request is None:
+            request = self._build_legacy_dispatch_request(
+                hidden_states=hidden_states,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                with_quant=with_quant,
+                dynamic_eplb=dynamic_eplb,
+                pertoken_scale=pertoken_scale,
+                **kwargs,
+            )
+        self.with_quant = request.quant.dispatch_with_quant
+        kwargs_mc2 = self.get_dispatch_mc2_kwargs(request)
         output = (
             torch_npu.npu_moe_distribute_dispatch_v2(**kwargs_mc2)
             if self.enable_dispatch_v2
@@ -228,9 +309,9 @@ class TokenDispatcherWithMC2(MoETokenDispatcher):
         ) = output[0:7]
 
         context_metadata = {
-            "topk_ids": topk_ids,
-            "topk_weights": topk_weights,
-            "expert_map": expert_map,
+            "topk_ids": request.topk_ids,
+            "topk_weights": request.topk_weights,
+            "expert_map": request.dispatch.expert_map,
             "ep_recv_counts": ep_recv_counts,
             "tp_recv_counts": tp_recv_counts,
             "assist_info_for_combine": assist_info_for_combine,
@@ -325,9 +406,10 @@ class TokenDispatcherWithAllGather(MoETokenDispatcher):
 
     def token_dispatch(
         self,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
+        request: TokenDispatchRequest | None = None,
+        hidden_states: torch.Tensor | None = None,
+        topk_weights: torch.Tensor | None = None,
+        topk_ids: torch.Tensor | None = None,
         expert_map: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         mc2_mask: torch.Tensor | None = None,
@@ -335,12 +417,42 @@ class TokenDispatcherWithAllGather(MoETokenDispatcher):
         with_quant: bool = False,
         dynamic_eplb: bool = False,
         pertoken_scale: torch.Tensor | None = None,
+        **kwargs,
     ):
-        self.with_quant = with_quant
+        if request is not None and not isinstance(request, TokenDispatchRequest):
+            hidden_states, topk_weights, topk_ids, expert_map = (
+                request,
+                hidden_states,
+                topk_weights,
+                topk_ids if expert_map is None else expert_map,
+            )
+            request = None
+
+        if request is None:
+            request = self._build_legacy_dispatch_request(
+                hidden_states=hidden_states,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                with_quant=with_quant,
+                dynamic_eplb=dynamic_eplb,
+                pertoken_scale=pertoken_scale,
+                **kwargs,
+            )
+        self.with_quant = request.quant.is_int_quant
+        hidden_states = request.hidden_states
+        topk_weights = request.topk_weights
+        topk_ids = request.topk_ids
+        expert_map = request.dispatch.expert_map
+        pertoken_scale = request.dispatch.pertoken_scale
+        global_redundant_expert_num = request.dispatch.global_redundant_expert_num
         self.original_shape = hidden_states.shape
 
         num_tokens = hidden_states.shape[:-1].numel()
-        self.apply_router_weight_on_input = apply_router_weight_on_input
+        self.apply_router_weight_on_input = request.dispatch.apply_router_weight_on_input
         if self.apply_router_weight_on_input:
             assert topk_weights.dim() == 2, "`topk_weights` should be in shape (num_tokens, topk)"
             _, topk = topk_weights.shape
@@ -432,9 +544,10 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher):
 
     def token_dispatch(
         self,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
+        request: TokenDispatchRequest | None = None,
+        hidden_states: torch.Tensor | None = None,
+        topk_weights: torch.Tensor | None = None,
+        topk_ids: torch.Tensor | None = None,
         expert_map: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         mc2_mask: torch.Tensor | None = None,
@@ -442,8 +555,35 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher):
         with_quant: bool = False,
         dynamic_eplb: bool = False,
         pertoken_scale: torch.Tensor | None = None,
+        **kwargs,
     ):
-        self.with_quant = with_quant
+        if request is not None and not isinstance(request, TokenDispatchRequest):
+            hidden_states, topk_weights, topk_ids, expert_map = (
+                request,
+                hidden_states,
+                topk_weights,
+                topk_ids if expert_map is None else expert_map,
+            )
+            request = None
+
+        if request is None:
+            request = self._build_legacy_dispatch_request(
+                hidden_states=hidden_states,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                with_quant=with_quant,
+                dynamic_eplb=dynamic_eplb,
+                pertoken_scale=pertoken_scale,
+                **kwargs,
+            )
+        self.with_quant = request.quant.is_int_quant
+        hidden_states = request.hidden_states
+        topk_weights = request.topk_weights
+        topk_ids = request.topk_ids
         self.hidden_shape = hidden_states.shape
 
         (
