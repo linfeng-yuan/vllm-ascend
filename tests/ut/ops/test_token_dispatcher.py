@@ -96,8 +96,19 @@ class TestTokenDispatcherWithMC2(TestBase):
         expert_map = torch.tensor([0, 1, 2, 3, 4, 5, 6, 7])
         mc2_mask = None
 
-        kwargs = self.dispatcher.get_dispatch_mc2_kwargs(
-            hidden_states, topk_weights, topk_ids, expert_map, mc2_mask)
+        request = self.dispatcher._build_legacy_dispatch_request(
+            hidden_states=hidden_states,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            expert_map=expert_map,
+            global_redundant_expert_num=0,
+            mc2_mask=mc2_mask,
+            apply_router_weight_on_input=False,
+            with_quant=False,
+            dynamic_eplb=False,
+            pertoken_scale=None,
+        )
+        kwargs = self.dispatcher.get_dispatch_mc2_kwargs(request)
         self.assertIn("x", kwargs)
         self.assertIn("expert_ids", kwargs)
         self.assertEqual(kwargs["moe_expert_num"], 8)
@@ -494,4 +505,3 @@ class TestTokenDispatcherWithAll2AllV(TestBase):
         self.assertIsNotNone(result.group_list)
         self.assertIsNotNone(result.dynamic_scale)
         self.assertEqual(result.group_list_type, 1)
-
