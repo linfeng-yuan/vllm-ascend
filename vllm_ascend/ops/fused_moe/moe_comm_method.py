@@ -27,13 +27,6 @@ from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
     MlpComputeRequest,
-    MoEDispatchSpec,
-    MoEMlpSpec,
-    MoEMxfpSpec,
-    MoEQuantSpec,
-    MoEQuantTensors,
-    MoEReservedQuantSpec,
-    MoEWeightPack,
     PrepareOutput,
     TokenDispatchRequest,
 )
@@ -49,7 +42,6 @@ from vllm_ascend.ops.fused_moe.token_dispatcher import (
     TokenDispatcherWithAllGather,
     TokenDispatcherWithMC2,
 )
-from vllm_ascend.quantization.quant_parser import parse_mxfp_quant_params
 from vllm_ascend.quantization.quant_type import QuantType
 
 _MoECommMethods: dict[MoECommType | None, MoECommMethod] = {}
@@ -120,68 +112,8 @@ class MoECommMethod(ABC):
 
     def fused_experts(
         self,
-        hidden_states: torch.Tensor | None = None,
-        w1: torch.Tensor | list[torch.Tensor] | None = None,
-        w2: torch.Tensor | list[torch.Tensor] | None = None,
-        topk_weights: torch.Tensor | None = None,
-        topk_ids: torch.Tensor | None = None,
-        activation: str = "silu",
-        w1_bias: torch.Tensor = None,
-        w2_bias: torch.Tensor = None,
-        apply_router_weight_on_input: bool = False,
-        use_int8_w8a8: bool = False,
-        use_int4_w4a8: bool = False,
-        use_int4_w4a16: bool = False,
-        expert_map: torch.Tensor | None = None,
-        w1_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w2_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w1_scale_bias: torch.Tensor = None,
-        w2_scale_bias: torch.Tensor = None,
-        w1_offset: torch.Tensor | None = None,
-        w2_offset: torch.Tensor | None = None,
-        # For load balance
-        log2phy: torch.Tensor = None,
-        need_trans: bool = False,
-        dynamic_eplb: bool = False,
-        mc2_mask: torch.Tensor = None,
-        pertoken_scale: torch.Tensor | None = None,
-        request: FusedExpertsRequest | None = None,
-        **kwargs,
+        request: FusedExpertsRequest,
     ):
-        if request is None:
-            assert hidden_states is not None
-            assert w1 is not None
-            assert w2 is not None
-            assert topk_weights is not None
-            assert topk_ids is not None
-            request = self._build_fused_experts_request(
-                hidden_states=hidden_states,
-                w1=w1,
-                w2=w2,
-                topk_weights=topk_weights,
-                topk_ids=topk_ids,
-                activation=activation,
-                w1_bias=w1_bias,
-                w2_bias=w2_bias,
-                apply_router_weight_on_input=apply_router_weight_on_input,
-                use_int8_w8a8=use_int8_w8a8,
-                use_int4_w4a8=use_int4_w4a8,
-                use_int4_w4a16=use_int4_w4a16,
-                expert_map=expert_map,
-                w1_scale=w1_scale,
-                w2_scale=w2_scale,
-                w1_scale_bias=w1_scale_bias,
-                w2_scale_bias=w2_scale_bias,
-                w1_offset=w1_offset,
-                w2_offset=w2_offset,
-                log2phy=log2phy,
-                need_trans=need_trans,
-                dynamic_eplb=dynamic_eplb,
-                mc2_mask=mc2_mask,
-                pertoken_scale=pertoken_scale,
-                **kwargs,
-            )
-
         # Check constraints
         assert request.hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.int8]
 
@@ -230,105 +162,6 @@ class MoECommMethod(ABC):
             before_combine_evt=before_combine_evt,
             group_list_type=dispatch_results.group_list_type,
             expert_tokens=dispatch_results.group_list,
-        )
-
-    def _build_fused_experts_request(
-        self,
-        *,
-        hidden_states: torch.Tensor,
-        w1: torch.Tensor | list[torch.Tensor],
-        w2: torch.Tensor | list[torch.Tensor],
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
-        activation: str,
-        w1_bias: torch.Tensor | None,
-        w2_bias: torch.Tensor | None,
-        apply_router_weight_on_input: bool,
-        use_int8_w8a8: bool,
-        use_int4_w4a8: bool,
-        use_int4_w4a16: bool,
-        expert_map: torch.Tensor | None,
-        w1_scale: list[torch.Tensor] | torch.Tensor | None,
-        w2_scale: list[torch.Tensor] | torch.Tensor | None,
-        w1_scale_bias: torch.Tensor | None,
-        w2_scale_bias: torch.Tensor | None,
-        w1_offset: torch.Tensor | None,
-        w2_offset: torch.Tensor | None,
-        log2phy: torch.Tensor | None,
-        need_trans: bool,
-        dynamic_eplb: bool,
-        mc2_mask: torch.Tensor | None,
-        pertoken_scale: torch.Tensor | None,
-        **kwargs,
-    ) -> FusedExpertsRequest:
-        use_mxfp_quant = kwargs.get("use_mxfp_quant", False)
-        act_quant_type, weight_quant_type, scale_type, per_token_scale_type, round_mode = parse_mxfp_quant_params(
-            **kwargs
-        )
-
-        quant_type = QuantType.NONE
-        if use_mxfp_quant:
-            quant_type = QuantType.MXFP8
-        elif use_int4_w4a16:
-            quant_type = QuantType.W4A16
-        elif use_int4_w4a8:
-            quant_type = QuantType.W4A8
-        elif use_int8_w8a8:
-            quant_type = QuantType.W8A8
-
-        mxfp_spec = None
-        if use_mxfp_quant:
-            mxfp_spec = MoEMxfpSpec(
-                act_quant_type=act_quant_type,
-                weight_quant_type=weight_quant_type,
-                scale_dtype=scale_type,
-                per_token_scale_dtype=per_token_scale_type,
-                use_bf16=(hidden_states.dtype == torch.bfloat16),
-            )
-
-        request_quant = MoEQuantSpec(
-            quant_type=quant_type,
-            comm_quant_mode=kwargs.get("comm_quant_mode"),
-            mxfp=mxfp_spec,
-            reserved=MoEReservedQuantSpec(
-                round_mode=round_mode,
-                rollback_quant_config=kwargs.get("rollback_quant_config"),
-            ),
-        )
-
-        return FusedExpertsRequest(
-            hidden_states=hidden_states,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            weights=MoEWeightPack(
-                w1=w1,
-                w2=w2,
-                w1_bias=w1_bias,
-                w2_bias=w2_bias,
-            ),
-            dispatch=MoEDispatchSpec(
-                expert_map=expert_map,
-                global_redundant_expert_num=self.moe_config.global_redundant_expert_num,
-                mc2_mask=mc2_mask,
-                apply_router_weight_on_input=apply_router_weight_on_input,
-                dynamic_eplb=dynamic_eplb,
-                log2phy=log2phy,
-                pertoken_scale=pertoken_scale,
-            ),
-            mlp=MoEMlpSpec(
-                activation=activation,
-                need_trans=need_trans,
-                dynamic_eplb=dynamic_eplb,
-            ),
-            quant=request_quant,
-            quant_tensors=MoEQuantTensors(
-                w1_scale=w1_scale,
-                w2_scale=w2_scale,
-                w1_scale_bias=w1_scale_bias,
-                w2_scale_bias=w2_scale_bias,
-                w1_offset=w1_offset,
-                w2_offset=w2_offset,
-            ),
         )
 
     @abstractmethod
@@ -433,68 +266,8 @@ class FusedMC2CommImpl(MoECommMethod):
 
     def fused_experts(
         self,
-        hidden_states: torch.Tensor | None = None,
-        w1: torch.Tensor | list[torch.Tensor] | None = None,
-        w2: torch.Tensor | list[torch.Tensor] | None = None,
-        topk_weights: torch.Tensor | None = None,
-        topk_ids: torch.Tensor | None = None,
-        activation: str = "silu",
-        w1_bias: torch.Tensor = None,
-        w2_bias: torch.Tensor = None,
-        apply_router_weight_on_input: bool = False,
-        use_int8_w8a8: bool = False,
-        use_int4_w4a8: bool = False,
-        use_int4_w4a16: bool = False,
-        expert_map: torch.Tensor | None = None,
-        w1_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w2_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w1_scale_bias: torch.Tensor = None,
-        w2_scale_bias: torch.Tensor = None,
-        w1_offset: torch.Tensor | None = None,
-        w2_offset: torch.Tensor | None = None,
-        # For load balance
-        log2phy: torch.Tensor = None,
-        need_trans: bool = False,
-        dynamic_eplb: bool = False,
-        mc2_mask: torch.Tensor = None,
-        pertoken_scale: torch.Tensor | None = None,
-        request: FusedExpertsRequest | None = None,
-        **kwargs,
+        request: FusedExpertsRequest,
     ):
-        if request is None:
-            assert hidden_states is not None
-            assert w1 is not None
-            assert w2 is not None
-            assert topk_weights is not None
-            assert topk_ids is not None
-            request = self._build_fused_experts_request(
-                hidden_states=hidden_states,
-                w1=w1,
-                w2=w2,
-                topk_weights=topk_weights,
-                topk_ids=topk_ids,
-                activation=activation,
-                w1_bias=w1_bias,
-                w2_bias=w2_bias,
-                apply_router_weight_on_input=apply_router_weight_on_input,
-                use_int8_w8a8=use_int8_w8a8,
-                use_int4_w4a8=use_int4_w4a8,
-                use_int4_w4a16=use_int4_w4a16,
-                expert_map=expert_map,
-                w1_scale=w1_scale,
-                w2_scale=w2_scale,
-                w1_scale_bias=w1_scale_bias,
-                w2_scale_bias=w2_scale_bias,
-                w1_offset=w1_offset,
-                w2_offset=w2_offset,
-                log2phy=log2phy,
-                need_trans=need_trans,
-                dynamic_eplb=dynamic_eplb,
-                mc2_mask=mc2_mask,
-                pertoken_scale=pertoken_scale,
-                **kwargs,
-            )
-
         assert not (request.quant_tensors.w1_scale is None or request.quant_tensors.w2_scale is None), (
             "w1_scale and w2_scale cannot be None for FusedMC2CommImpl."
         )
