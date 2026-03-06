@@ -15,6 +15,8 @@
 # This file is a part of the vllm-ascend project.
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 from vllm.forward_context import get_forward_context
 
@@ -53,7 +55,9 @@ class AllGatherCommImpl310(AllGatherCommImpl):
         moe_comm_method = get_forward_context().moe_comm_method
         assert moe_comm_method is not None, "Missing communication context"
 
-        dispatch_results = self.token_dispatcher.token_dispatch(
+        # Narrow the dispatcher type for 310P-specific dispatch signature.
+        dispatcher = cast(TokenDispatcherWithAllGather310, self.token_dispatcher)
+        dispatch_results = dispatcher.token_dispatch(
             hidden_states=hidden_states,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
@@ -72,7 +76,7 @@ class AllGatherCommImpl310(AllGatherCommImpl):
             with_quant=use_int8_w8a8,
         )
 
-        combine_results = self.token_dispatcher.token_combine(
+        combine_results = dispatcher.token_combine(
             hidden_states=mlp_output, context_metadata=dispatch_results.context_metadata
         )
 
