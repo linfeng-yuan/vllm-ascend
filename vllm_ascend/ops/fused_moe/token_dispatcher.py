@@ -86,6 +86,7 @@ class MoETokenDispatcher(ABC):
     ) -> TokenCombineResult:
         raise NotImplementedError("Combine function not implemented.")
 
+
 class TokenDispatcherWithMC2(MoETokenDispatcher):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
