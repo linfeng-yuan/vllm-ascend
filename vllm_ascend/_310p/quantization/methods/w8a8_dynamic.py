@@ -95,7 +95,9 @@ class AscendW8A8DynamicFusedMoEMethod310(AscendMoEScheme):
         log2phy: torch.Tensor | None = None,
         global_redundant_expert_num: int = 0,
         pertoken_scale: Any | None = None,
-        **kwargs,
+        activation: str = "silu",
+        apply_router_weight_on_input: bool = False,
+        mc2_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         zero_expert_num = getattr(layer, "zero_expert_num", 0)
         zero_expert_type = getattr(layer, "zero_expert_type", None)
@@ -137,6 +139,7 @@ class AscendW8A8DynamicFusedMoEMethod310(AscendMoEScheme):
             topk_ids=topk_ids,
             expert_map=expert_map,
             use_int8_w8a8=True,
+            apply_router_weight_on_input=apply_router_weight_on_input,
         )
         if zero_expert_num > 0 and zero_expert_type is not None:
             final_hidden_states += zero_expert_result
