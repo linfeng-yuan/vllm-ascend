@@ -31,11 +31,6 @@ from vllm_ascend.flash_common3_context import get_flash_common3_context
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts, zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
-    MoEDispatchSpec,
-    MoEMlpSpec,
-    MoEQuantSpec,
-    MoEQuantTensors,
-    MoEWeightPack,
 )
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
@@ -259,33 +254,23 @@ class AscendW8A8DynamicFusedMoEMethod(AscendMoEScheme):
             w2_scale = [layer.fused_w2_scale] if fused_scale_flag else [layer.w2_weight_scale]
 
         final_hidden_states = moe_comm_method.fused_experts(
-            request=FusedExpertsRequest(
+            request=FusedExpertsRequest.from_runtime(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,
-                weights=MoEWeightPack(
-                    w1=w1,
-                    w2=w2,
-                ),
-                dispatch=MoEDispatchSpec(
-                    expert_map=expert_map,
-                    global_redundant_expert_num=global_redundant_expert_num,
-                    mc2_mask=mc2_mask,
-                    apply_router_weight_on_input=apply_router_weight_on_input,
-                    dynamic_eplb=self.dynamic_eplb,
-                    log2phy=log2phy,
-                    pertoken_scale=pertoken_scale,
-                ),
-                mlp=MoEMlpSpec(
-                    activation=activation,
-                    need_trans=False,
-                    dynamic_eplb=self.dynamic_eplb,
-                ),
-                quant=MoEQuantSpec(quant_type=QuantType.W8A8),
-                quant_tensors=MoEQuantTensors(
-                    w1_scale=[layer.fused_w1_scale] if fused_scale_flag else w1_scale,
-                    w2_scale=[layer.fused_w2_scale] if fused_scale_flag else w2_scale,
-                ),
+                w1=w1,
+                w2=w2,
+                quant_type=self.quant_type,
+                dynamic_eplb=self.dynamic_eplb,
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                log2phy=log2phy,
+                pertoken_scale=pertoken_scale,
+                activation=activation,
+                w1_scale=[layer.fused_w1_scale] if fused_scale_flag else w1_scale,
+                w2_scale=[layer.fused_w2_scale] if fused_scale_flag else w2_scale,
             )
         )
         if zero_expert_num > 0 and zero_expert_type is not None:

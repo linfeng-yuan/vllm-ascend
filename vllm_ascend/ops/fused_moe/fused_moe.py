@@ -41,10 +41,6 @@ from vllm_ascend.ops.fused_moe.experts_selector import select_experts, zero_expe
 from vllm_ascend.ops.fused_moe.moe_comm_method import AllGatherCommImpl, FusedExpertsResult, setup_moe_comm_method
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
-    MoEDispatchSpec,
-    MoEMlpSpec,
-    MoEQuantSpec,
-    MoEWeightPack,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import (
@@ -154,31 +150,23 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         final_hidden_states = moe_comm_method.fused_experts(
-            request=FusedExpertsRequest(
+            request=FusedExpertsRequest.from_runtime(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,
-                weights=MoEWeightPack(
-                    w1=layer.w13_weight,
-                    w2=layer.w2_weight,
-                    w1_bias=layer.w13_bias if self.moe.has_bias else None,
-                    w2_bias=layer.w2_bias if self.moe.has_bias else None,
-                ),
-                dispatch=MoEDispatchSpec(
-                    expert_map=expert_map,
-                    global_redundant_expert_num=global_redundant_expert_num,
-                    mc2_mask=mc2_mask,
-                    apply_router_weight_on_input=apply_router_weight_on_input,
-                    dynamic_eplb=self.dynamic_eplb,
-                    log2phy=log2phy,
-                    pertoken_scale=pertoken_scale,
-                ),
-                mlp=MoEMlpSpec(
-                    activation=activation,
-                    need_trans=False,
-                    dynamic_eplb=self.dynamic_eplb,
-                ),
-                quant=MoEQuantSpec(quant_type=QuantType.NONE),
+                w1=layer.w13_weight,
+                w2=layer.w2_weight,
+                w1_bias=layer.w13_bias if self.moe.has_bias else None,
+                w2_bias=layer.w2_bias if self.moe.has_bias else None,
+                quant_type=QuantType.NONE,
+                dynamic_eplb=self.dynamic_eplb,
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                log2phy=log2phy,
+                pertoken_scale=pertoken_scale,
+                activation=activation,
             )
         )
         if zero_expert_num > 0 and zero_expert_type is not None:
