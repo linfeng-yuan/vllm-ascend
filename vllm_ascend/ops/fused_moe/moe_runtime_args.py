@@ -128,6 +128,77 @@ class FusedExpertsRequest:
     quant: MoEQuantSpec
     quant_tensors: MoEQuantTensors = field(default_factory=MoEQuantTensors)
 
+    @classmethod
+    def from_runtime(
+        cls,
+        *,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        w1: torch.Tensor | list[torch.Tensor],
+        w2: torch.Tensor | list[torch.Tensor],
+        quant_type: QuantType,
+        dynamic_eplb: bool,
+        expert_map: torch.Tensor | None = None,
+        global_redundant_expert_num: int = 0,
+        mc2_mask: torch.Tensor | None = None,
+        apply_router_weight_on_input: bool = False,
+        log2phy: torch.Tensor | None = None,
+        pertoken_scale: torch.Tensor | None = None,
+        activation: str = "silu",
+        need_trans: bool = False,
+        w1_bias: torch.Tensor | None = None,
+        w2_bias: torch.Tensor | None = None,
+        comm_quant_mode: int | None = None,
+        mxfp: MoEMxfpSpec | None = None,
+        w1_scale: list[torch.Tensor] | torch.Tensor | None = None,
+        w2_scale: list[torch.Tensor] | torch.Tensor | None = None,
+        w1_scale_bias: torch.Tensor | None = None,
+        w2_scale_bias: torch.Tensor | None = None,
+        w1_offset: torch.Tensor | None = None,
+        w2_offset: torch.Tensor | None = None,
+    ) -> FusedExpertsRequest:
+        """Create a canonical fused-experts request from runtime values."""
+
+        return cls(
+            hidden_states=hidden_states,
+            topk_weights=topk_weights,
+            topk_ids=topk_ids,
+            weights=MoEWeightPack(
+                w1=w1,
+                w2=w2,
+                w1_bias=w1_bias,
+                w2_bias=w2_bias,
+            ),
+            dispatch=MoEDispatchSpec(
+                expert_map=expert_map,
+                global_redundant_expert_num=global_redundant_expert_num,
+                mc2_mask=mc2_mask,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                dynamic_eplb=dynamic_eplb,
+                log2phy=log2phy,
+                pertoken_scale=pertoken_scale,
+            ),
+            mlp=MoEMlpSpec(
+                activation=activation,
+                need_trans=need_trans,
+                dynamic_eplb=dynamic_eplb,
+            ),
+            quant=MoEQuantSpec(
+                quant_type=quant_type,
+                comm_quant_mode=comm_quant_mode,
+                mxfp=mxfp,
+            ),
+            quant_tensors=MoEQuantTensors(
+                w1_scale=w1_scale,
+                w2_scale=w2_scale,
+                w1_scale_bias=w1_scale_bias,
+                w2_scale_bias=w2_scale_bias,
+                w1_offset=w1_offset,
+                w2_offset=w2_offset,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TokenDispatchRequest:
