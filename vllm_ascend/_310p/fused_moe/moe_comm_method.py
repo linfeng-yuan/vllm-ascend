@@ -77,7 +77,7 @@ class AllGatherCommImpl310(AllGatherCommImpl):
         )
 
         combine_results = dispatcher.token_combine(
-            hidden_states=mlp_output, context_metadata=dispatch_results.context_metadata
+            hidden_states=mlp_output, combine_context=dispatch_results.combine_context
         )
 
         return FusedExpertsResult(

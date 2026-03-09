@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Generic, TypeVar
 
+import numpy as np
 import torch
 
 from vllm_ascend.quantization.quant_type import QuantType
@@ -116,6 +118,19 @@ class MoEMlpSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class MoEMlpKernelSpec:
+    """MLP kernel execution settings."""
+
+    fusion: bool
+    use_mxfp_quant: bool
+    act_quant_type: torch.dtype | None = None
+    weight_quant_type: torch.dtype | None = None
+    scale_type: torch.dtype | None = None
+    per_token_scale_type: torch.dtype | None = None
+    use_bf16: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class FusedExpertsRequest:
     """Unified request for MoE fused experts pipeline."""
 
@@ -127,77 +142,6 @@ class FusedExpertsRequest:
     mlp: MoEMlpSpec
     quant: MoEQuantSpec
     quant_tensors: MoEQuantTensors = field(default_factory=MoEQuantTensors)
-
-    @classmethod
-    def from_runtime(
-        cls,
-        *,
-        hidden_states: torch.Tensor,
-        topk_weights: torch.Tensor,
-        topk_ids: torch.Tensor,
-        w1: torch.Tensor | list[torch.Tensor],
-        w2: torch.Tensor | list[torch.Tensor],
-        quant_type: QuantType,
-        dynamic_eplb: bool,
-        expert_map: torch.Tensor | None = None,
-        global_redundant_expert_num: int = 0,
-        mc2_mask: torch.Tensor | None = None,
-        apply_router_weight_on_input: bool = False,
-        log2phy: torch.Tensor | None = None,
-        pertoken_scale: torch.Tensor | None = None,
-        activation: str = "silu",
-        need_trans: bool = False,
-        w1_bias: torch.Tensor | None = None,
-        w2_bias: torch.Tensor | None = None,
-        comm_quant_mode: int | None = None,
-        mxfp: MoEMxfpSpec | None = None,
-        w1_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w2_scale: list[torch.Tensor] | torch.Tensor | None = None,
-        w1_scale_bias: torch.Tensor | None = None,
-        w2_scale_bias: torch.Tensor | None = None,
-        w1_offset: torch.Tensor | None = None,
-        w2_offset: torch.Tensor | None = None,
-    ) -> FusedExpertsRequest:
-        """Create a canonical fused-experts request from runtime values."""
-
-        return cls(
-            hidden_states=hidden_states,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            weights=MoEWeightPack(
-                w1=w1,
-                w2=w2,
-                w1_bias=w1_bias,
-                w2_bias=w2_bias,
-            ),
-            dispatch=MoEDispatchSpec(
-                expert_map=expert_map,
-                global_redundant_expert_num=global_redundant_expert_num,
-                mc2_mask=mc2_mask,
-                apply_router_weight_on_input=apply_router_weight_on_input,
-                dynamic_eplb=dynamic_eplb,
-                log2phy=log2phy,
-                pertoken_scale=pertoken_scale,
-            ),
-            mlp=MoEMlpSpec(
-                activation=activation,
-                need_trans=need_trans,
-                dynamic_eplb=dynamic_eplb,
-            ),
-            quant=MoEQuantSpec(
-                quant_type=quant_type,
-                comm_quant_mode=comm_quant_mode,
-                mxfp=mxfp,
-            ),
-            quant_tensors=MoEQuantTensors(
-                w1_scale=w1_scale,
-                w2_scale=w2_scale,
-                w1_scale_bias=w1_scale_bias,
-                w2_scale_bias=w2_scale_bias,
-                w1_offset=w1_offset,
-                w2_offset=w2_offset,
-            ),
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +168,55 @@ class MlpComputeRequest:
     quant: MoEQuantSpec
     quant_tensors: MoEQuantTensors
     mlp: MoEMlpSpec
+    kernel: MoEMlpKernelSpec
+
+
+@dataclass(frozen=True, slots=True)
+class MC2CombineContext:
+    topk_ids: torch.Tensor
+    topk_weights: torch.Tensor
+    expert_map: torch.Tensor | None
+    ep_recv_counts: torch.Tensor
+    tp_recv_counts: torch.Tensor
+    assist_info_for_combine: torch.Tensor
+    expand_scales: torch.Tensor | None
+    dispatch_with_quant: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AllGatherCombineContext:
+    topk_weights: torch.Tensor
+    expanded_row_idx: torch.Tensor
+    restore_shape: torch.Size
+
+
+@dataclass(frozen=True, slots=True)
+class AllToAllCombineContext:
+    input_splits: np.ndarray
+    output_splits: np.ndarray
+    topk_weights: torch.Tensor
+    reversed_local_input_permutation_mapping: torch.Tensor
+    reversed_global_input_permutation_mapping: torch.Tensor | None
+    hidden_shape: torch.Size
+    hidden_shape_before_permute: torch.Size
+
+
+TCombineContext = TypeVar("TCombineContext")
+
+
+@dataclass(frozen=True, slots=True)
+class TokenDispatchResult(Generic[TCombineContext]):
+    hidden_states: torch.Tensor
+    group_list: torch.Tensor
+    group_list_type: int
+    combine_context: TCombineContext
+    dynamic_scale: torch.Tensor | None = None
+    topk_scales: torch.Tensor | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TokenCombineResult:
+    routed_out: torch.Tensor
 
 
 @dataclass(frozen=True, slots=True)

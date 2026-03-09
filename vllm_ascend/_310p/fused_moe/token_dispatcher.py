@@ -25,6 +25,7 @@
 import torch
 from vllm.distributed.parallel_state import get_ep_group
 
+from vllm_ascend.ops.fused_moe.moe_runtime_args import AllGatherCombineContext
 from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather, TokenDispatchResult
 
 
@@ -40,11 +41,10 @@ class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
         expert_map: torch.Tensor | None = None,
         apply_router_weight_on_input: bool = False,
     ):
-        self.original_shape = hidden_states.shape
+        restore_shape = hidden_states.shape
 
         num_tokens = hidden_states.shape[:-1].numel()
-        self.apply_router_weight_on_input = apply_router_weight_on_input
-        if self.apply_router_weight_on_input:
+        if apply_router_weight_on_input:
             assert topk_weights.dim() == 2, "`topk_weights` should be in shape (num_tokens, topk)"
             _, topk = topk_weights.shape
             assert topk == 1, "Only support topk=1 when `apply_router_weight_on_input` is True"
@@ -66,13 +66,16 @@ class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
         )
         expert_tokens = expert_tokens.to(torch.int64)
         group_list_type = 1  # `count` mode
-        context_metadata = {"topk_weights": topk_weights, "expanded_row_idx": expanded_row_idx}
 
         return TokenDispatchResult(
             hidden_states=sorted_hidden_states,
             group_list=expert_tokens,
             group_list_type=group_list_type,
-            context_metadata=context_metadata,
+            combine_context=AllGatherCombineContext(
+                topk_weights=topk_weights,
+                expanded_row_idx=expanded_row_idx,
+                restore_shape=restore_shape,
+            ),
         )
 
     def moe_init_routing(self, x, expert_idx, active_num, active_expert_range):

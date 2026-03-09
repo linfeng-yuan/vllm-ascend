@@ -8,6 +8,7 @@ from vllm_ascend.ops.fused_moe.moe_comm_method import (AllGatherCommImpl,
                                                        AlltoAllCommImpl,
                                                        MC2CommImpl)
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (FusedExpertsRequest,
+                                                        AllGatherCombineContext,
                                                         MoEDispatchSpec,
                                                         MoEMlpSpec,
                                                         MoEQuantSpec,
@@ -198,10 +199,16 @@ class TestMoECommMethod(TestBase):
 
         # Mock token dispatcher
         mock_td_instance = MagicMock()
+        dispatch_topk_weights = torch.tensor([[0.5, 0.5], [0.3, 0.7], [0.8, 0.2], [0.6, 0.4]])
         mock_td_instance.token_dispatch.return_value = TokenDispatchResult(
             hidden_states=torch.randn(6, 8),
             group_list=torch.tensor([2, 2, 2]),
-            group_list_type=1)
+            group_list_type=1,
+            combine_context=AllGatherCombineContext(
+                topk_weights=dispatch_topk_weights,
+                expanded_row_idx=torch.arange(8, dtype=torch.int32),
+                restore_shape=torch.Size([4, 8]),
+            ))
         mock_td_instance.token_combine.return_value = TokenCombineResult(
             routed_out=torch.randn(4, 8))
         mock_token_dispatcher.return_value = mock_td_instance
@@ -216,8 +223,7 @@ class TestMoECommMethod(TestBase):
         hidden_states = torch.randn(4, 8).contiguous()
         w1 = torch.randn(16, 8).contiguous()
         w2 = torch.randn(16, 8).contiguous()
-        topk_weights = torch.tensor([[0.5, 0.5], [0.3, 0.7], [0.8, 0.2],
-                                     [0.6, 0.4]])
+        topk_weights = dispatch_topk_weights
         topk_ids = torch.tensor([[0, 1], [1, 2], [2, 0], [1, 1]])
 
         # Make sure tensors are contiguous and have correct strides
@@ -254,6 +260,12 @@ class TestMoECommMethod(TestBase):
 
         # Verify unified_apply_mlp was called
         mock_unified_apply_mlp.assert_called_once()
+        mlp_request = mock_unified_apply_mlp.call_args.kwargs["request"]
+        self.assertFalse(mlp_request.kernel.fusion)
+        self.assertFalse(mlp_request.kernel.use_mxfp_quant)
 
         # Verify token_combine was called
-        mock_td_instance.token_combine.assert_called_once()
+        mock_td_instance.token_combine.assert_called_once_with(
+            hidden_states=mock_unified_apply_mlp.return_value,
+            combine_context=mock_td_instance.token_dispatch.return_value.combine_context,
+        )

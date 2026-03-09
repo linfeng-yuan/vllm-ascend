@@ -29,6 +29,10 @@ import torch_npu
 from vllm.model_executor.layers.activation import SiluAndMul
 
 from vllm_ascend.ops.fused_moe.experts_selector import check_npu_moe_gating_top_k, select_experts
+from vllm_ascend.ops.fused_moe.moe_request_builders import (
+    build_fused_experts_request,
+    build_mlp_compute_request,
+)
 from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEDispatchSpec,
@@ -150,7 +154,7 @@ def test_token_dispatcher_with_all_gather(
     sorted_hidden_states = dispatch_output.hidden_states
     group_list = dispatch_output.group_list
     group_list_type = dispatch_output.group_list_type
-    context_metadata = dispatch_output.context_metadata
+    combine_context = dispatch_output.combine_context
 
     expert_output = apply_mlp(
         hidden_states=sorted_hidden_states,
@@ -161,7 +165,7 @@ def test_token_dispatcher_with_all_gather(
     )
 
     combined_output = dispatcher.token_combine(
-        hidden_states=expert_output, context_metadata=context_metadata, bias=None
+        hidden_states=expert_output, combine_context=combine_context, bias=None
     )
 
     torch_output = torch_moe(a, w1, w2, topk_weights, topk_ids, topk, expert_map)
@@ -231,25 +235,27 @@ def test_token_dispatcher_with_all_gather_quant(
             )
         )
 
-        sorted_hidden_states = dispatch_output.hidden_states
-        group_list = dispatch_output.group_list
-        group_list_type = dispatch_output.group_list_type
-        dynamic_scale = dispatch_output.dynamic_scale
-        context_metadata = dispatch_output.context_metadata
+        combine_context = dispatch_output.combine_context
 
-        expert_output = unified_apply_mlp(
-            hidden_states=sorted_hidden_states,
-            w1=w1,
-            w1_scale=w1_scale,
-            w2=w2,
-            w2_scale=w2_scale,
-            group_list=group_list,
-            group_list_type=group_list_type,
-            dynamic_scale=dynamic_scale,
-            with_quant=True,
+        mlp_request = build_mlp_compute_request(
+            request=build_fused_experts_request(
+                hidden_states=a,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                w1=w1,
+                w2=w2,
+                quant_type=QuantType.W8A8,
+                dynamic_eplb=False,
+                expert_map=expert_map,
+                w1_scale=w1_scale,
+                w2_scale=w2_scale,
+            ),
+            dispatch_result=dispatch_output,
+            use_fusion_ops=False,
         )
+        expert_output = unified_apply_mlp(request=mlp_request)
         combined_output = dispatcher.token_combine(
-            hidden_states=expert_output, context_metadata=context_metadata, bias=None
+            hidden_states=expert_output, combine_context=combine_context, bias=None
         )
         assert combined_output.routed_out.shape == (m, k)
         gc.collect()

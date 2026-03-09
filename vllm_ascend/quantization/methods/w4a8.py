@@ -28,9 +28,7 @@ from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.distributed.parallel_state import get_mc2_group
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
-from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    FusedExpertsRequest,
-)
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
 from vllm_ascend.utils import COMPRESSED_TENSORS_METHOD, maybe_trans_nz
 
 from .base import AscendLinearScheme, AscendMoEScheme, QuantType
@@ -383,7 +381,7 @@ class AscendW4A8DynamicFusedMoEMethod(AscendMoEScheme):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         return moe_comm_method.fused_experts(
-            request=FusedExpertsRequest.from_runtime(
+            request=build_fused_experts_request(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

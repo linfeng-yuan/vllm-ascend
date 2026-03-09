@@ -7,6 +7,7 @@ import torch
 from vllm_ascend.ops.fused_moe.moe_mlp import cumsum_group_list, unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MlpComputeRequest,
+    MoEMlpKernelSpec,
     MoEMlpSpec,
     MoEMxfpSpec,
     MoEQuantSpec,
@@ -68,6 +69,12 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
             quant=MoEQuantSpec(quant_type=QuantType.NONE),
             quant_tensors=MoEQuantTensors(),
             mlp=MoEMlpSpec(activation="silu", need_trans=False, dynamic_eplb=False),
+            kernel=MoEMlpKernelSpec(
+                fusion=False,
+                use_mxfp_quant=False,
+                act_quant_type=torch.float8_e4m3fn,
+                weight_quant_type=torch.float8_e4m3fn,
+            ),
         )
 
         with (
@@ -104,13 +111,20 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
                 w2_scale=[torch.randn(1)],
             ),
             mlp=MoEMlpSpec(activation="silu", need_trans=False, dynamic_eplb=True),
+            kernel=MoEMlpKernelSpec(
+                fusion=True,
+                use_mxfp_quant=True,
+                act_quant_type=torch.float8_e4m3fn,
+                weight_quant_type=torch.float8_e4m3fn,
+                use_bf16=False,
+            ),
         )
 
         with (
             patch("vllm_ascend.ops.fused_moe.moe_mlp.quant_apply_mlp", return_value=expected) as mock_quant,
             patch("vllm_ascend.ops.fused_moe.moe_mlp.unquant_apply_mlp") as mock_unquant,
         ):
-            output = unified_apply_mlp(request=request, fusion=True)
+            output = unified_apply_mlp(request=request)
 
         self.assertTrue(output is expected)
         mock_quant.assert_called_once()

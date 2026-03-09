@@ -39,9 +39,7 @@ from vllm_ascend.eplb.core.eplb_utils import init_eplb_config
 from vllm_ascend.flash_common3_context import get_flash_common3_context, set_flash_common3_context
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts, zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_comm_method import AllGatherCommImpl, FusedExpertsResult, setup_moe_comm_method
-from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    FusedExpertsRequest,
-)
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import (
     enable_sp,
@@ -150,7 +148,7 @@ class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         final_hidden_states = moe_comm_method.fused_experts(
-            request=FusedExpertsRequest.from_runtime(
+            request=build_fused_experts_request(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

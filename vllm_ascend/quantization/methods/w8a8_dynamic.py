@@ -29,9 +29,7 @@ from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.distributed.parallel_state import get_mc2_group
 from vllm_ascend.flash_common3_context import get_flash_common3_context
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts, zero_experts_compute
-from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    FusedExpertsRequest,
-)
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
 from vllm_ascend.utils import ACL_FORMAT_FRACTAL_NZ, maybe_trans_nz
 
 from .base import AscendLinearScheme, AscendMoEScheme, QuantType
@@ -254,7 +252,7 @@ class AscendW8A8DynamicFusedMoEMethod(AscendMoEScheme):
             w2_scale = [layer.fused_w2_scale] if fused_scale_flag else [layer.w2_weight_scale]
 
         final_hidden_states = moe_comm_method.fused_experts(
-            request=FusedExpertsRequest.from_runtime(
+            request=build_fused_experts_request(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,
