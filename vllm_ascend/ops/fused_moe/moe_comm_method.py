@@ -30,6 +30,7 @@ from vllm_ascend.ops.fused_moe.moe_request_builders import (
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
+    MlpComputeRequest,
     PaddedHiddenStatesPrepareContext,
     PrepareOutput,
 )
@@ -143,7 +144,7 @@ class MoECommMethod(ABC):
             use_fusion_ops=self.use_fusion_ops,
         )
 
-        mlp_output = unified_apply_mlp(request=mlp_request)
+        mlp_output = self._apply_mlp(mlp_request)
 
         before_combine_evt = torch.npu.current_stream().record_event()
         combine_results = self.token_dispatcher.token_combine(
@@ -157,6 +158,9 @@ class MoECommMethod(ABC):
             group_list_type=dispatch_results.group_list_type,
             expert_tokens=dispatch_results.group_list,
         )
+
+    def _apply_mlp(self, request: MlpComputeRequest) -> torch.Tensor:
+        return unified_apply_mlp(request=request)
 
     @abstractmethod
     def _get_token_dispatcher(self) -> MoETokenDispatcher:

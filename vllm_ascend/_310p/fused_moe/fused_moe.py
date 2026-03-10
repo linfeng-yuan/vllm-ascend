@@ -25,6 +25,7 @@ from vllm.model_executor.layers.fused_moe.shared_fused_moe import SharedFusedMoE
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.ops.fused_moe.experts_selector import zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_comm_method import FusedExpertsResult, _MoECommMethods
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
 from vllm_ascend.quantization.quant_type import QuantType
 
 from .experts_selector import select_experts
@@ -93,13 +94,17 @@ class AscendUnquantizedFusedMoEMethod310(UnquantizedFusedMoEMethod):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         final_hidden_states = moe_comm_method.fused_experts(
-            hidden_states=x,
-            w1=layer.w13_weight,
-            w2=layer.w2_weight,
-            topk_weights=topk_weights,
-            topk_ids=topk_ids,
-            expert_map=expert_map,
-            apply_router_weight_on_input=apply_router_weight_on_input,
+            request=build_fused_experts_request(
+                hidden_states=x,
+                topk_weights=topk_weights,
+                topk_ids=topk_ids,
+                w1=layer.w13_weight,
+                w2=layer.w2_weight,
+                quant_type=QuantType.NONE,
+                dynamic_eplb=False,
+                expert_map=expert_map,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+            ),
         )
         if zero_expert_num > 0 and zero_expert_type is not None:
             final_hidden_states += zero_expert_result
