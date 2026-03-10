@@ -220,11 +220,16 @@ class TokenCombineResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PaddedHiddenStatesPrepareContext:
+    padded_hidden_states_shape: torch.Size
+
+
+@dataclass(frozen=True, slots=True)
 class PrepareOutput:
     """Typed output from prepare stage."""
 
     hidden_states: torch.Tensor
     router_logits: torch.Tensor
     mc2_mask: torch.Tensor | None
-    context_metadata: dict | None
+    context_metadata: PaddedHiddenStatesPrepareContext | None
     pertoken_scale: torch.Tensor | None = None

@@ -31,7 +31,10 @@ from vllm.model_executor.layers.fused_moe import FusedMoEConfig
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.distributed.utils import fc3_all_gather_and_maybe_unpad_impl
-from vllm_ascend.ops.fused_moe.moe_runtime_args import PrepareOutput
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (
+    PaddedHiddenStatesPrepareContext,
+    PrepareOutput,
+)
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.utils import enable_sp, npu_stream_switch, prefill_context_parallel_enable
 
@@ -90,7 +93,10 @@ class PrepareAndFinalize(ABC):
         raise NotImplementedError("Prepare not implemented.")
 
     def finalize(
-        self, hidden_states: torch.Tensor, reduce_results: bool, context_metadata: dict | None = None
+        self,
+        hidden_states: torch.Tensor,
+        reduce_results: bool,
+        context_metadata: PaddedHiddenStatesPrepareContext | None = None,
     ) -> torch.Tensor:
         """
         Finalize MoE output. May involve:
@@ -164,7 +170,9 @@ class PrepareAndFinalizeWithAll2All(PrepareAndFinalize):
                 hidden_states = split_hidden_states[self.tp_rank]
                 router_logits = split_router_logits[self.tp_rank]
 
-        context_metadata = {"padded_hidden_states_shape": padded_hidden_states_shape}
+        context_metadata = PaddedHiddenStatesPrepareContext(
+            padded_hidden_states_shape=padded_hidden_states_shape,
+        )
 
         return PrepareOutput(
             hidden_states=hidden_states,
@@ -175,7 +183,10 @@ class PrepareAndFinalizeWithAll2All(PrepareAndFinalize):
         )
 
     def finalize(
-        self, hidden_states: torch.Tensor, reduce_results: bool, context_metadata: dict | None = None
+        self,
+        hidden_states: torch.Tensor,
+        reduce_results: bool,
+        context_metadata: PaddedHiddenStatesPrepareContext | None = None,
     ) -> torch.Tensor:
         """
         Finalization steps:
@@ -193,7 +204,7 @@ class PrepareAndFinalizeWithAll2All(PrepareAndFinalize):
                 # may share memory with original hidden_states. Since shared
                 # experts may use the original tensor, reusing it would cause
                 # in-place modification during all_gather, corrupting the data.
-                padded_hidden_states_shape = context_metadata["padded_hidden_states_shape"]
+                padded_hidden_states_shape = context_metadata.padded_hidden_states_shape
                 gathered_hidden_states = torch.empty(
                     padded_hidden_states_shape, device=hidden_states.device, dtype=hidden_states.dtype
                 )
@@ -275,9 +286,9 @@ class PrepareAndFinalizeWithMC2(PrepareAndFinalizeWithAll2All):
                 hidden_states = split_hidden_states[self.tp_rank]
                 router_logits = split_router_logits[self.tp_rank]
 
-        context_metadata = {
-            "padded_hidden_states_shape": padded_hidden_states_shape,
-        }
+        context_metadata = PaddedHiddenStatesPrepareContext(
+            padded_hidden_states_shape=padded_hidden_states_shape,
+        )
 
         return PrepareOutput(
             hidden_states=hidden_states,
@@ -422,7 +433,10 @@ class PrepareAndFinalizeWithAllGather(PrepareAndFinalize):
         )
 
     def finalize(
-        self, hidden_states: torch.Tensor, reduce_results: bool, context_metadata: dict | None = None
+        self,
+        hidden_states: torch.Tensor,
+        reduce_results: bool,
+        context_metadata: PaddedHiddenStatesPrepareContext | None = None,
     ) -> torch.Tensor:
         """
         Finalization steps:

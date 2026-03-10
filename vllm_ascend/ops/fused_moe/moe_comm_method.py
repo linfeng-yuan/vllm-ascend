@@ -30,6 +30,7 @@ from vllm_ascend.ops.fused_moe.moe_request_builders import (
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     FusedExpertsRequest,
+    PaddedHiddenStatesPrepareContext,
     PrepareOutput,
 )
 from vllm_ascend.ops.fused_moe.prepare_finalize import (
@@ -107,7 +108,10 @@ class MoECommMethod(ABC):
         )
 
     def finalize(
-        self, hidden_states: torch.Tensor, reduce_results: bool, context_metadata: dict | None = None
+        self,
+        hidden_states: torch.Tensor,
+        reduce_results: bool,
+        context_metadata: PaddedHiddenStatesPrepareContext | None = None,
     ) -> torch.Tensor:
         hidden_states = self.prepare_finalize.finalize(hidden_states, reduce_results, context_metadata)
         return hidden_states

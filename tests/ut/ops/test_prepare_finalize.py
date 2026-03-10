@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import torch
 from vllm.model_executor.layers.fused_moe import FusedMoEConfig
 
+from vllm_ascend.ops.fused_moe.moe_runtime_args import PaddedHiddenStatesPrepareContext
 from vllm_ascend.ops.fused_moe.prepare_finalize import (
     PrepareAndFinalizeWithAll2All, PrepareAndFinalizeWithAllGather,
     PrepareAndFinalizeWithMC2)
@@ -55,6 +56,8 @@ class TestPrepareAndFinalize(unittest.TestCase):
         self.assertEqual(h_out.shape[0], 4)
         self.assertEqual(r_out.shape[0], 4)
         self.assertEqual(mask.tolist(), [1, 0, 1])
+        self.assertIsInstance(context_metadata, PaddedHiddenStatesPrepareContext)
+        self.assertEqual(context_metadata.padded_hidden_states_shape, torch.Size([4, 8]))
 
         # Finalize
         result = layer.finalize(h_out,
@@ -94,6 +97,8 @@ class TestPrepareAndFinalize(unittest.TestCase):
 
         # With TP=2, should split into 2 parts
         self.assertEqual(h_out.shape[0], 2)
+        self.assertIsInstance(context_metadata, PaddedHiddenStatesPrepareContext)
+        self.assertEqual(context_metadata.padded_hidden_states_shape, torch.Size([4, 8]))
 
         # Mock all_gather behavior
         def mock_all_gather_func(tensor_list, tensor, group=None):
@@ -131,6 +136,8 @@ class TestPrepareAndFinalize(unittest.TestCase):
 
         # Pad to tp_size=1, so no change
         self.assertEqual(h_out.shape[0], 3)
+        self.assertIsInstance(context_metadata, PaddedHiddenStatesPrepareContext)
+        self.assertEqual(context_metadata.padded_hidden_states_shape, torch.Size([3, 8]))
 
         result = layer.finalize(h_out,
                                 reduce_results=False,
@@ -161,6 +168,8 @@ class TestPrepareAndFinalize(unittest.TestCase):
 
         # Split due to TP=2
         self.assertEqual(h_out.shape[0], 1)
+        self.assertIsInstance(context_metadata, PaddedHiddenStatesPrepareContext)
+        self.assertEqual(context_metadata.padded_hidden_states_shape, torch.Size([2, 8]))
 
         # Mock all_gather
         def mock_all_gather_func(tensor_list, tensor, group=None):
@@ -220,6 +229,7 @@ class TestPrepareAndFinalize(unittest.TestCase):
         # After all-gather with DP=2, should double the batch size
         self.assertEqual(h_out.shape[0], 12)
         self.assertEqual(r_out.shape[0], 12)
+        self.assertIsNone(context_metadata)
 
         # Finalize with reduce_scatter
         def mock_reduce_scatter_func(tensor, dim):
