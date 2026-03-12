@@ -1,6 +1,7 @@
 import unittest
 
 import torch
+import vllm_ascend.ops.fused_moe.moe_runtime_args as runtime_args
 
 from vllm_ascend.ops.fused_moe.moe_request_builders import (
     build_fused_experts_request,
@@ -8,14 +9,42 @@ from vllm_ascend.ops.fused_moe.moe_request_builders import (
     build_token_dispatch_request,
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    AllGatherCombineContext,
-    MoEMxfpSpec,
-    TokenDispatchResult,
+    MoEAllGatherRoutingMetadata,
+    MoEWeights,
+    MoEMxfpParams,
+    MoETokenDispatchOutput,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 
 
 class TestMoERequestBuilders(unittest.TestCase):
+    def test_runtime_args_facade_exports_public_types(self):
+        expected_symbols = [
+            "MoEAllGatherRoutingMetadata",
+            "MoEAllToAllRoutingMetadata",
+            "MoEFusedExpertsInput",
+            "MoEMC2RoutingMetadata",
+            "MoEMlpComputeInput",
+            "MoEMlpKernelParams",
+            "MoEMlpParams",
+            "MoEMxfpParams",
+            "MoEOptionalQuantTensor",
+            "MoEPrepareOutput",
+            "MoEQuantParams",
+            "MoEReservedQuantParams",
+            "MoERoutingParams",
+            "MoETokenCombineOutput",
+            "MoETokenDispatchInput",
+            "MoETokenDispatchOutput",
+            "MoEWeights",
+            "MoEWeightTensor",
+            "TMoERoutingMetadata",
+        ]
+
+        for symbol in expected_symbols:
+            with self.subTest(symbol=symbol):
+                self.assertTrue(hasattr(runtime_args, symbol))
+
     def test_build_fused_experts_request_preserves_runtime_semantics(self):
         for quant_type in (
             QuantType.NONE,
@@ -48,11 +77,47 @@ class TestMoERequestBuilders(unittest.TestCase):
                 self.assertIs(request.hidden_states, hidden_states)
                 self.assertIs(request.topk_weights, topk_weights)
                 self.assertIs(request.topk_ids, topk_ids)
-                self.assertTrue(request.dispatch.dynamic_eplb)
-                self.assertTrue(request.dispatch.apply_router_weight_on_input)
-                self.assertEqual(request.dispatch.global_redundant_expert_num, 2)
+                self.assertTrue(request.routing.dynamic_eplb)
+                self.assertTrue(request.routing.apply_router_weight_on_input)
+                self.assertEqual(request.routing.global_redundant_expert_num, 2)
                 self.assertEqual(request.mlp.activation, "gelu")
                 self.assertEqual(request.quant.quant_type, quant_type)
+
+    def test_build_fused_experts_request_merges_dense_and_quant_weights(self):
+        w1 = torch.randn(2, 8, 16)
+        w2 = torch.randn(2, 16, 8)
+        w1_scale = [torch.randn(1)]
+        w2_scale = [torch.randn(1)]
+        w1_scale_bias = torch.randn(1)
+        w2_scale_bias = torch.randn(1)
+        w1_offset = torch.randn(1)
+        w2_offset = torch.randn(1)
+
+        request = build_fused_experts_request(
+            hidden_states=torch.randn(4, 8),
+            topk_weights=torch.randn(4, 2),
+            topk_ids=torch.randint(0, 4, (4, 2), dtype=torch.int32),
+            w1=w1,
+            w2=w2,
+            quant_type=QuantType.W8A8,
+            dynamic_eplb=False,
+            w1_scale=w1_scale,
+            w2_scale=w2_scale,
+            w1_scale_bias=w1_scale_bias,
+            w2_scale_bias=w2_scale_bias,
+            w1_offset=w1_offset,
+            w2_offset=w2_offset,
+        )
+
+        self.assertIsInstance(request.weights, MoEWeights)
+        self.assertIs(request.weights.w1, w1)
+        self.assertIs(request.weights.w2, w2)
+        self.assertIs(request.weights.w1_scale, w1_scale)
+        self.assertIs(request.weights.w2_scale, w2_scale)
+        self.assertIs(request.weights.w1_scale_bias, w1_scale_bias)
+        self.assertIs(request.weights.w2_scale_bias, w2_scale_bias)
+        self.assertIs(request.weights.w1_offset, w1_offset)
+        self.assertIs(request.weights.w2_offset, w2_offset)
 
     def test_build_token_dispatch_request_supports_remapped_topk_ids(self):
         request = build_fused_experts_request(
@@ -73,7 +138,7 @@ class TestMoERequestBuilders(unittest.TestCase):
 
         self.assertIs(dispatch_request.hidden_states, request.hidden_states)
         self.assertIs(dispatch_request.topk_weights, request.topk_weights)
-        self.assertIs(dispatch_request.dispatch, request.dispatch)
+        self.assertIs(dispatch_request.routing, request.routing)
         self.assertIs(dispatch_request.quant, request.quant)
         self.assertIs(dispatch_request.topk_ids, routed_topk_ids)
 
@@ -86,7 +151,7 @@ class TestMoERequestBuilders(unittest.TestCase):
             w2=torch.randn(2, 16, 8),
             quant_type=QuantType.MXFP8,
             dynamic_eplb=False,
-            mxfp=MoEMxfpSpec(
+            mxfp=MoEMxfpParams(
                 act_quant_type=torch.float8_e4m3fn,
                 weight_quant_type=torch.float8_e4m3fn,
                 scale_dtype=torch.float32,
@@ -96,12 +161,12 @@ class TestMoERequestBuilders(unittest.TestCase):
             w1_scale=[torch.randn(1)],
             w2_scale=[torch.randn(1)],
         )
-        dispatch_result = TokenDispatchResult(
+        dispatch_result = MoETokenDispatchOutput(
             hidden_states=torch.randn(4, 8, dtype=torch.bfloat16),
             group_list=torch.tensor([2, 2], dtype=torch.int64),
             group_list_type=1,
             dynamic_scale=torch.randn(4, 1),
-            combine_context=AllGatherCombineContext(
+            routing_metadata=MoEAllGatherRoutingMetadata(
                 topk_weights=request.topk_weights,
                 expanded_row_idx=torch.arange(4, dtype=torch.int32),
                 restore_shape=torch.Size([2, 8]),
@@ -116,7 +181,8 @@ class TestMoERequestBuilders(unittest.TestCase):
 
         self.assertIs(mlp_request.hidden_states, dispatch_result.hidden_states)
         self.assertIs(mlp_request.weights, request.weights)
-        self.assertIs(mlp_request.quant_tensors, request.quant_tensors)
+        self.assertIs(mlp_request.weights.w1_scale, request.weights.w1_scale)
+        self.assertIs(mlp_request.weights.w2_scale, request.weights.w2_scale)
         self.assertTrue(mlp_request.kernel.fusion)
         self.assertTrue(mlp_request.kernel.use_mxfp_quant)
         self.assertEqual(mlp_request.kernel.scale_type, torch.float32)

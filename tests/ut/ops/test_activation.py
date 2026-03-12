@@ -33,7 +33,7 @@ def dummy_tensor():
 def default_vllm_config():
     mock_config = MagicMock()
 
-    mock_config.compilation_config.dispatch_forward_backend = "eager"
+    mock_config.compilation_config.routing_forward_backend = "eager"
 
     mock_config.compilation_config.custom_ops = ["all"]
 

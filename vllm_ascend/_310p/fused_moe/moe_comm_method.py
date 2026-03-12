@@ -18,7 +18,7 @@ from __future__ import annotations
 import torch
 
 from vllm_ascend.ops.fused_moe.moe_comm_method import AllGatherCommImpl
-from vllm_ascend.ops.fused_moe.moe_runtime_args import MlpComputeRequest
+from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEMlpComputeInput
 
 from .moe_mlp import unified_apply_mlp
 from .token_dispatcher import TokenDispatcherWithAllGather310
@@ -39,7 +39,7 @@ class AllGatherCommImpl310(AllGatherCommImpl):
         super().__init__(moe_config)
         self.use_fusion_ops = False
 
-    def _apply_mlp(self, request: MlpComputeRequest) -> torch.Tensor:
+    def _apply_mlp(self, request: MoEMlpComputeInput) -> torch.Tensor:
         return unified_apply_mlp(request=request)
 
     def _get_token_dispatcher(self):

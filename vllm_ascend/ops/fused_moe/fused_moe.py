@@ -456,7 +456,7 @@ class AscendFusedMoE(FusedMoE):
         hidden_states = prepare_output.hidden_states
         router_logits = prepare_output.router_logits
         mc2_mask = prepare_output.mc2_mask
-        context_metadata = prepare_output.context_metadata
+        padded_hidden_states_shape = prepare_output.padded_hidden_states_shape
         pertoken_scale = prepare_output.pertoken_scale
 
         # Make sure the default stream waits for the gate stream to finish.
@@ -510,7 +510,7 @@ class AscendFusedMoE(FusedMoE):
         routed_out = _EXTRA_CTX.moe_comm_method.finalize(
             hidden_states=fused_experts_results.routed_out,
             reduce_results=self.reduce_results,
-            context_metadata=context_metadata,
+            padded_hidden_states_shape=padded_hidden_states_shape,
         )
 
         if return_with_event:

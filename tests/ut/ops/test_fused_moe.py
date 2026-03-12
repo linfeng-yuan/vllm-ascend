@@ -24,13 +24,12 @@ from tests.ut.base import TestBase
 from vllm_ascend.ascend_forward_context import MoECommType
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
 from vllm_ascend.ops.fused_moe.fused_moe import AscendUnquantizedFusedMoEMethod
-from vllm_ascend.ops.fused_moe.moe_runtime_args import (MlpComputeRequest,
-                                                        MoEMlpKernelSpec,
-                                                        MoEMlpSpec,
-                                                        MoEQuantSpec,
-                                                        MoEQuantTensors,
-                                                        MoEWeightPack,
-                                                        PrepareOutput)
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (MoEMlpComputeInput,
+                                                        MoEMlpKernelParams,
+                                                        MoEMlpParams,
+                                                        MoEQuantParams,
+                                                        MoEWeights,
+                                                        MoEPrepareOutput)
 from vllm_ascend.ops.fused_moe.moe_mlp import (cumsum_group_list,
                                                unified_apply_mlp)
 from vllm_ascend.quantization.quant_type import QuantType
@@ -82,16 +81,16 @@ def build_mlp_request(
     activation: str = "silu",
     need_trans: bool = True,
     dynamic_eplb: bool = False,
-) -> MlpComputeRequest:
-    return MlpComputeRequest(
+) -> MoEMlpComputeInput:
+    return MoEMlpComputeInput(
         hidden_states=hidden_states,
         group_list=group_list,
         group_list_type=group_list_type,
         dynamic_scale=dynamic_scale,
         topk_scales=topk_scales,
-        weights=MoEWeightPack(w1=w1, w2=w2),
-        quant=MoEQuantSpec(quant_type=QuantType.W8A8 if with_quant else QuantType.NONE),
-        quant_tensors=MoEQuantTensors(
+        weights=MoEWeights(
+            w1=w1,
+            w2=w2,
             w1_scale=w1_scale,
             w2_scale=w2_scale,
             w1_scale_bias=w1_scale_bias,
@@ -99,12 +98,13 @@ def build_mlp_request(
             w1_offset=w1_offset,
             w2_offset=w2_offset,
         ),
-        mlp=MoEMlpSpec(
+        quant=MoEQuantParams(quant_type=QuantType.W8A8 if with_quant else QuantType.NONE),
+        mlp=MoEMlpParams(
             activation=activation,
             need_trans=need_trans,
             dynamic_eplb=dynamic_eplb,
         ),
-        kernel=MoEMlpKernelSpec(
+        kernel=MoEMlpKernelParams(
             fusion=fusion,
             use_mxfp_quant=False,
             act_quant_type=torch.float8_e4m3fn,
@@ -137,11 +137,11 @@ def mock_dist_env(mocker: MockerFixture):
     mock_moe_comm_method = MagicMock()
 
     def mock_prepare(hidden_states, router_logits, **kwargs):
-        return PrepareOutput(
+        return MoEPrepareOutput(
             hidden_states=hidden_states,
             router_logits=router_logits,
             mc2_mask=kwargs.get("mc2_mask"),
-            context_metadata=None,
+            padded_hidden_states_shape=None,
             pertoken_scale=None,
         )
 

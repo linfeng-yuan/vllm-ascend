@@ -33,7 +33,7 @@ from vllm_ascend.device.mxfp_compat import (
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
 from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    MoEMxfpSpec,
+    MoEMxfpParams,
 )
 
 from .base import AscendLinearScheme, AscendMoEScheme, QuantType
@@ -211,7 +211,7 @@ class AscendW8A8MXFP8DynamicFusedMoEMethod(AscendMoEScheme):
                 log2phy=log2phy,
                 pertoken_scale=pertoken_scale,
                 activation=activation,
-                mxfp=MoEMxfpSpec(
+                mxfp=MoEMxfpParams(
                     act_quant_type=torch.float8_e4m3fn,
                     weight_quant_type=torch.float8_e4m3fn,
                     scale_dtype=FLOAT8_E8M0FNU_DTYPE,

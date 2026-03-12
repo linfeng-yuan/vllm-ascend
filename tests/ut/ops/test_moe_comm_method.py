@@ -7,16 +7,16 @@ from tests.ut.base import TestBase
 from vllm_ascend.ops.fused_moe.moe_comm_method import (AllGatherCommImpl,
                                                        AlltoAllCommImpl,
                                                        MC2CommImpl)
-from vllm_ascend.ops.fused_moe.moe_runtime_args import (FusedExpertsRequest,
-                                                        AllGatherCombineContext,
-                                                        MoEDispatchSpec,
-                                                        MoEMlpSpec,
-                                                        MoEQuantSpec,
-                                                        MoEWeightPack,
-                                                        PrepareOutput)
+from vllm_ascend.ops.fused_moe.moe_runtime_args import (MoEFusedExpertsInput,
+                                                        MoEAllGatherRoutingMetadata,
+                                                        MoERoutingParams,
+                                                        MoEMlpParams,
+                                                        MoEQuantParams,
+                                                        MoEWeights,
+                                                        MoEPrepareOutput)
 from vllm_ascend.quantization.methods.base import QuantType
-from vllm_ascend.ops.fused_moe.token_dispatcher import (TokenCombineResult,
-                                                        TokenDispatchResult)
+from vllm_ascend.ops.fused_moe.token_dispatcher import (MoETokenCombineOutput,
+                                                        MoETokenDispatchOutput)
 
 
 class TestMoECommMethod(TestBase):
@@ -52,11 +52,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = PrepareOutput(
+        mock_pf_instance.prepare.return_value = MoEPrepareOutput(
             hidden_states=torch.randn(4, 8),
             router_logits=torch.randn(4, 2),
             mc2_mask=None,
-            context_metadata=None)
+            padded_hidden_states_shape=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -72,7 +72,7 @@ class TestMoECommMethod(TestBase):
         router_logits = torch.randn(3, 2)
         prepare_output = comm_impl.prepare(hidden_states, router_logits)
         h_out = prepare_output.hidden_states
-        context_metadata = prepare_output.context_metadata
+        padded_hidden_states_shape = prepare_output.padded_hidden_states_shape
 
         # Verify prepare was called with correct arguments
         mock_pf_instance.prepare.assert_called_once_with(
@@ -81,7 +81,7 @@ class TestMoECommMethod(TestBase):
         # Test finalize method
         comm_impl.finalize(h_out,
                            reduce_results=True,
-                           context_metadata=context_metadata)
+                           padded_hidden_states_shape=padded_hidden_states_shape)
         mock_pf_instance.finalize.assert_called_once_with(h_out, True, None)
 
     @patch('vllm_ascend.ascend_forward_context.get_forward_context')
@@ -97,11 +97,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = PrepareOutput(
+        mock_pf_instance.prepare.return_value = MoEPrepareOutput(
             hidden_states=torch.randn(4, 8),
             router_logits=torch.randn(4, 2),
             mc2_mask=torch.tensor([1, 0, 1, 0]),
-            context_metadata=None)
+            padded_hidden_states_shape=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -117,7 +117,7 @@ class TestMoECommMethod(TestBase):
         router_logits = torch.randn(3, 2)
         prepare_output = comm_impl.prepare(hidden_states, router_logits)
         h_out = prepare_output.hidden_states
-        context_metadata = prepare_output.context_metadata
+        padded_hidden_states_shape = prepare_output.padded_hidden_states_shape
 
         # Verify prepare was called with correct arguments
         mock_pf_instance.prepare.assert_called_once_with(
@@ -126,7 +126,7 @@ class TestMoECommMethod(TestBase):
         # Test finalize method
         comm_impl.finalize(h_out,
                            reduce_results=True,
-                           context_metadata=context_metadata)
+                           padded_hidden_states_shape=padded_hidden_states_shape)
         mock_pf_instance.finalize.assert_called_once_with(h_out, True, None)
 
     @patch('vllm_ascend.ascend_forward_context.get_forward_context')
@@ -146,11 +146,11 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = PrepareOutput(
+        mock_pf_instance.prepare.return_value = MoEPrepareOutput(
             hidden_states=torch.randn(4, 8),
             router_logits=torch.randn(4, 2),
             mc2_mask=None,
-            context_metadata=None)
+            padded_hidden_states_shape=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
@@ -189,27 +189,27 @@ class TestMoECommMethod(TestBase):
 
         # Mock prepare finalize
         mock_pf_instance = MagicMock()
-        mock_pf_instance.prepare.return_value = PrepareOutput(
+        mock_pf_instance.prepare.return_value = MoEPrepareOutput(
             hidden_states=torch.randn(4, 8),
             router_logits=torch.randn(4, 2),
             mc2_mask=None,
-            context_metadata=None)
+            padded_hidden_states_shape=None)
         mock_pf_instance.finalize.return_value = torch.randn(4, 8)
         mock_prepare_finalize.return_value = mock_pf_instance
 
         # Mock token dispatcher
         mock_td_instance = MagicMock()
         dispatch_topk_weights = torch.tensor([[0.5, 0.5], [0.3, 0.7], [0.8, 0.2], [0.6, 0.4]])
-        mock_td_instance.token_dispatch.return_value = TokenDispatchResult(
+        mock_td_instance.token_dispatch.return_value = MoETokenDispatchOutput(
             hidden_states=torch.randn(6, 8),
             group_list=torch.tensor([2, 2, 2]),
             group_list_type=1,
-            combine_context=AllGatherCombineContext(
+            routing_metadata=MoEAllGatherRoutingMetadata(
                 topk_weights=dispatch_topk_weights,
                 expanded_row_idx=torch.arange(8, dtype=torch.int32),
                 restore_shape=torch.Size([4, 8]),
             ))
-        mock_td_instance.token_combine.return_value = TokenCombineResult(
+        mock_td_instance.token_combine.return_value = MoETokenCombineOutput(
             routed_out=torch.randn(4, 8))
         mock_token_dispatcher.return_value = mock_td_instance
 
@@ -231,25 +231,25 @@ class TestMoECommMethod(TestBase):
         w1 = w1.contiguous()
         w2 = w2.contiguous()
 
-        result = comm_impl.fused_experts(request=FusedExpertsRequest(
+        result = comm_impl.fused_experts(request=MoEFusedExpertsInput(
             hidden_states=hidden_states,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            weights=MoEWeightPack(
+            weights=MoEWeights(
                 w1=[w1],
                 w2=[w2],
             ),
-            dispatch=MoEDispatchSpec(
+            routing=MoERoutingParams(
                 expert_map=None,
                 global_redundant_expert_num=0,
                 mc2_mask=None,
                 apply_router_weight_on_input=False,
                 dynamic_eplb=False,
             ),
-            mlp=MoEMlpSpec(
+            mlp=MoEMlpParams(
                 activation="silu",
             ),
-            quant=MoEQuantSpec(),
+            quant=MoEQuantParams(),
         ))
 
         # Verify result shape
@@ -267,5 +267,5 @@ class TestMoECommMethod(TestBase):
         # Verify token_combine was called
         mock_td_instance.token_combine.assert_called_once_with(
             hidden_states=mock_unified_apply_mlp.return_value,
-            combine_context=mock_td_instance.token_dispatch.return_value.combine_context,
+            routing_metadata=mock_td_instance.token_dispatch.return_value.routing_metadata,
         )

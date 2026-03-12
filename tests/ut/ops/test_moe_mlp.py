@@ -6,13 +6,12 @@ import torch
 
 from vllm_ascend.ops.fused_moe.moe_mlp import cumsum_group_list, unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    MlpComputeRequest,
-    MoEMlpKernelSpec,
-    MoEMlpSpec,
-    MoEMxfpSpec,
-    MoEQuantSpec,
-    MoEQuantTensors,
-    MoEWeightPack,
+    MoEMlpComputeInput,
+    MoEMlpKernelParams,
+    MoEMlpParams,
+    MoEMxfpParams,
+    MoEQuantParams,
+    MoEWeights,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 
@@ -54,22 +53,21 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
     def test_request_unquant_path(self):
         hidden_states = torch.randn(2, 8)
         expected = torch.randn(2, 8)
-        request = MlpComputeRequest(
+        request = MoEMlpComputeInput(
             hidden_states=hidden_states,
             group_list=torch.tensor([2, 2], dtype=torch.int64),
             group_list_type=1,
             dynamic_scale=None,
             topk_scales=None,
-            weights=MoEWeightPack(
+            weights=MoEWeights(
                 w1=torch.randn(1, 16, 8),
                 w2=torch.randn(1, 8, 8),
                 w1_bias=torch.randn(1, 16),
                 w2_bias=torch.randn(1, 8),
             ),
-            quant=MoEQuantSpec(quant_type=QuantType.NONE),
-            quant_tensors=MoEQuantTensors(),
-            mlp=MoEMlpSpec(activation="silu", need_trans=False, dynamic_eplb=False),
-            kernel=MoEMlpKernelSpec(
+            quant=MoEQuantParams(quant_type=QuantType.NONE),
+            mlp=MoEMlpParams(activation="silu", need_trans=False, dynamic_eplb=False),
+            kernel=MoEMlpKernelParams(
                 fusion=False,
                 use_mxfp_quant=False,
                 act_quant_type=torch.float8_e4m3fn,
@@ -92,26 +90,24 @@ class TestUnifiedApplyMlpRequest(unittest.TestCase):
     def test_request_quant_path(self):
         hidden_states = torch.randn(2, 8)
         expected = torch.randn(2, 8)
-        request = MlpComputeRequest(
+        request = MoEMlpComputeInput(
             hidden_states=hidden_states,
             group_list=torch.tensor([2, 2], dtype=torch.int64),
             group_list_type=1,
             dynamic_scale=torch.randn(2, 1),
             topk_scales=None,
-            weights=MoEWeightPack(
+            weights=MoEWeights(
                 w1=torch.randn(1, 16, 8),
                 w2=torch.randn(1, 8, 8),
-            ),
-            quant=MoEQuantSpec(
-                quant_type=QuantType.MXFP8,
-                mxfp=MoEMxfpSpec(use_bf16=False),
-            ),
-            quant_tensors=MoEQuantTensors(
                 w1_scale=[torch.randn(1)],
                 w2_scale=[torch.randn(1)],
             ),
-            mlp=MoEMlpSpec(activation="silu", need_trans=False, dynamic_eplb=True),
-            kernel=MoEMlpKernelSpec(
+            quant=MoEQuantParams(
+                quant_type=QuantType.MXFP8,
+                mxfp=MoEMxfpParams(use_bf16=False),
+            ),
+            mlp=MoEMlpParams(activation="silu", need_trans=False, dynamic_eplb=True),
+            kernel=MoEMlpKernelParams(
                 fusion=True,
                 use_mxfp_quant=True,
                 act_quant_type=torch.float8_e4m3fn,

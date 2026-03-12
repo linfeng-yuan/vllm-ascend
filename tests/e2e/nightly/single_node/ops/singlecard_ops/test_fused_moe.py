@@ -35,9 +35,9 @@ from vllm_ascend.ops.fused_moe.moe_request_builders import (
 )
 from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    MoEDispatchSpec,
-    MoEQuantSpec,
-    TokenDispatchRequest,
+    MoERoutingParams,
+    MoEQuantParams,
+    MoETokenDispatchInput,
 )
 from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather
 from vllm_ascend.quantization.quant_type import QuantType
@@ -136,25 +136,25 @@ def test_token_dispatcher_with_all_gather(
 
     apply_router_weight_on_input = False
     dispatch_output = dispatcher.token_dispatch(
-        request=TokenDispatchRequest(
+        request=MoETokenDispatchInput(
             hidden_states=a,
             topk_weights=topk_weights,
             topk_ids=topk_ids,
-            dispatch=MoEDispatchSpec(
+            routing=MoERoutingParams(
                 expert_map=expert_map,
                 global_redundant_expert_num=0,
                 mc2_mask=None,
                 apply_router_weight_on_input=apply_router_weight_on_input,
                 dynamic_eplb=False,
             ),
-            quant=MoEQuantSpec(quant_type=QuantType.NONE),
+            quant=MoEQuantParams(quant_type=QuantType.NONE),
         )
     )
 
     sorted_hidden_states = dispatch_output.hidden_states
     group_list = dispatch_output.group_list
     group_list_type = dispatch_output.group_list_type
-    combine_context = dispatch_output.combine_context
+    routing_metadata = dispatch_output.routing_metadata
 
     expert_output = apply_mlp(
         hidden_states=sorted_hidden_states,
@@ -165,7 +165,7 @@ def test_token_dispatcher_with_all_gather(
     )
 
     combined_output = dispatcher.token_combine(
-        hidden_states=expert_output, combine_context=combine_context, bias=None
+        hidden_states=expert_output, routing_metadata=routing_metadata, bias=None
     )
 
     torch_output = torch_moe(a, w1, w2, topk_weights, topk_ids, topk, expert_map)
@@ -220,22 +220,22 @@ def test_token_dispatcher_with_all_gather_quant(
 
         apply_router_weight_on_input = False
         dispatch_output = dispatcher.token_dispatch(
-            request=TokenDispatchRequest(
+            request=MoETokenDispatchInput(
                 hidden_states=a,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,
-                dispatch=MoEDispatchSpec(
+                routing=MoERoutingParams(
                     expert_map=expert_map,
                     global_redundant_expert_num=0,
                     mc2_mask=None,
                     apply_router_weight_on_input=apply_router_weight_on_input,
                     dynamic_eplb=False,
                 ),
-                quant=MoEQuantSpec(quant_type=QuantType.W8A8),
+                quant=MoEQuantParams(quant_type=QuantType.W8A8),
             )
         )
 
-        combine_context = dispatch_output.combine_context
+        routing_metadata = dispatch_output.routing_metadata
 
         mlp_request = build_mlp_compute_request(
             request=build_fused_experts_request(
@@ -255,7 +255,7 @@ def test_token_dispatcher_with_all_gather_quant(
         )
         expert_output = unified_apply_mlp(request=mlp_request)
         combined_output = dispatcher.token_combine(
-            hidden_states=expert_output, combine_context=combine_context, bias=None
+            hidden_states=expert_output, routing_metadata=routing_metadata, bias=None
         )
         assert combined_output.routed_out.shape == (m, k)
         gc.collect()

@@ -25,8 +25,8 @@
 import torch
 from vllm.distributed.parallel_state import get_ep_group
 
-from vllm_ascend.ops.fused_moe.moe_runtime_args import AllGatherCombineContext, TokenDispatchRequest
-from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather, TokenDispatchResult
+from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEAllGatherRoutingMetadata, MoETokenDispatchInput
+from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather, MoETokenDispatchOutput
 
 
 class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
@@ -35,13 +35,13 @@ class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
 
     def token_dispatch(
         self,
-        request: TokenDispatchRequest,
+        request: MoETokenDispatchInput,
     ):
         hidden_states = request.hidden_states
         topk_weights = request.topk_weights
         topk_ids = request.topk_ids
-        expert_map = request.dispatch.expert_map
-        apply_router_weight_on_input = request.dispatch.apply_router_weight_on_input
+        expert_map = request.routing.expert_map
+        apply_router_weight_on_input = request.routing.apply_router_weight_on_input
         restore_shape = hidden_states.shape
 
         num_tokens = hidden_states.shape[:-1].numel()
@@ -68,11 +68,11 @@ class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
         expert_tokens = expert_tokens.to(torch.int64)
         group_list_type = 1  # `count` mode
 
-        return TokenDispatchResult(
+        return MoETokenDispatchOutput(
             hidden_states=sorted_hidden_states,
             group_list=expert_tokens,
             group_list_type=group_list_type,
-            combine_context=AllGatherCombineContext(
+            routing_metadata=MoEAllGatherRoutingMetadata(
                 topk_weights=topk_weights,
                 expanded_row_idx=expanded_row_idx,
                 restore_shape=restore_shape,

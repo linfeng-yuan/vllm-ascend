@@ -18,7 +18,7 @@
 import torch
 import torch_npu
 
-from vllm_ascend.ops.fused_moe.moe_runtime_args import MlpComputeRequest
+from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEMlpComputeInput
 
 
 def quant_apply_mlp(
@@ -68,12 +68,12 @@ def unquant_apply_mlp(
     return hidden_states
 
 
-def unified_apply_mlp(*, request: MlpComputeRequest) -> torch.Tensor:
+def unified_apply_mlp(*, request: MoEMlpComputeInput) -> torch.Tensor:
     hidden_states = request.hidden_states
     w1 = request.weights.w1
     w2 = request.weights.w2
-    w1_scale = request.quant_tensors.w1_scale
-    w2_scale = request.quant_tensors.w2_scale
+    w1_scale = request.weights.w1_scale
+    w2_scale = request.weights.w2_scale
     group_list = request.group_list
     group_list_type = request.group_list_type
     assert isinstance(w1, torch.Tensor)

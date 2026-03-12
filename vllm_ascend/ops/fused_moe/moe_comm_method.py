@@ -29,10 +29,9 @@ from vllm_ascend.ops.fused_moe.moe_request_builders import (
     build_token_dispatch_request,
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    FusedExpertsRequest,
-    MlpComputeRequest,
-    PaddedHiddenStatesPrepareContext,
-    PrepareOutput,
+    MoEFusedExpertsInput,
+    MoEMlpComputeInput,
+    MoEPrepareOutput,
 )
 from vllm_ascend.ops.fused_moe.prepare_finalize import (
     PrepareAndFinalize,
@@ -99,7 +98,7 @@ class MoECommMethod(ABC):
         enable_shared_expert_dp: bool = False,
         replace_allreduce: bool = False,
         quant_type: QuantType = QuantType.NONE,
-    ) -> PrepareOutput:
+    ) -> MoEPrepareOutput:
         return self.prepare_finalize.prepare(
             hidden_states,
             router_logits,
@@ -112,14 +111,14 @@ class MoECommMethod(ABC):
         self,
         hidden_states: torch.Tensor,
         reduce_results: bool,
-        context_metadata: PaddedHiddenStatesPrepareContext | None = None,
+        padded_hidden_states_shape: torch.Size | None = None,
     ) -> torch.Tensor:
-        hidden_states = self.prepare_finalize.finalize(hidden_states, reduce_results, context_metadata)
+        hidden_states = self.prepare_finalize.finalize(hidden_states, reduce_results, padded_hidden_states_shape)
         return hidden_states
 
     def fused_experts(
         self,
-        request: FusedExpertsRequest,
+        request: MoEFusedExpertsInput,
     ):
         # Check constraints
         assert request.hidden_states.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.int8]
@@ -129,8 +128,8 @@ class MoECommMethod(ABC):
 
         before_dispatch_evt = torch.npu.current_stream().record_event()
         routed_topk_ids = request.topk_ids
-        if request.dispatch.log2phy is not None:
-            routed_topk_ids = request.dispatch.log2phy[routed_topk_ids]
+        if request.routing.log2phy is not None:
+            routed_topk_ids = request.routing.log2phy[routed_topk_ids]
 
         dispatch_request = build_token_dispatch_request(
             request=request,
@@ -148,7 +147,7 @@ class MoECommMethod(ABC):
 
         before_combine_evt = torch.npu.current_stream().record_event()
         combine_results = self.token_dispatcher.token_combine(
-            hidden_states=mlp_output, combine_context=dispatch_results.combine_context
+            hidden_states=mlp_output, routing_metadata=dispatch_results.routing_metadata
         )
 
         return FusedExpertsResult(
@@ -159,7 +158,7 @@ class MoECommMethod(ABC):
             expert_tokens=dispatch_results.group_list,
         )
 
-    def _apply_mlp(self, request: MlpComputeRequest) -> torch.Tensor:
+    def _apply_mlp(self, request: MoEMlpComputeInput) -> torch.Tensor:
         return unified_apply_mlp(request=request)
 
     @abstractmethod
@@ -264,9 +263,9 @@ class FusedMC2CommImpl(MoECommMethod):
 
     def fused_experts(
         self,
-        request: FusedExpertsRequest,
+        request: MoEFusedExpertsInput,
     ):
-        assert not (request.quant_tensors.w1_scale is None or request.quant_tensors.w2_scale is None), (
+        assert not (request.weights.w1_scale is None or request.weights.w2_scale is None), (
             "w1_scale and w2_scale cannot be None for FusedMC2CommImpl."
         )
 
@@ -276,19 +275,19 @@ class FusedMC2CommImpl(MoECommMethod):
 
         # Apply log2phy if needed
         topk_ids = request.topk_ids
-        if request.dispatch.log2phy is not None:
-            topk_ids = request.dispatch.log2phy[topk_ids]
+        if request.routing.log2phy is not None:
+            topk_ids = request.routing.log2phy[topk_ids]
 
         expert_tokens = None
         if envs_ascend.VLLM_ASCEND_ENABLE_FUSED_MC2 == 1:
             out = torch.empty_like(request.hidden_states)
-            torch.ops._C_ascend.dispatch_ffn_combine(  # type: ignore
+            torch.ops._C_ascend.routing_ffn_combine(  # type: ignore
                 x=request.hidden_states,
                 weight1=request.weights.w1,
                 weight2=request.weights.w2,
                 expert_idx=topk_ids,
-                scale1=request.quant_tensors.w1_scale,
-                scale2=request.quant_tensors.w2_scale,
+                scale1=request.weights.w1_scale,
+                scale2=request.weights.w2_scale,
                 probs=request.topk_weights.to(torch.float32),
                 group=self.token_dispatcher.moe_all_to_all_group_name,
                 max_output_size=65536,
@@ -297,14 +296,14 @@ class FusedMC2CommImpl(MoECommMethod):
             )
             expert_tokens = self.expert_token_nums
         elif envs_ascend.VLLM_ASCEND_ENABLE_FUSED_MC2 == 2:
-            assert request.dispatch.expert_map is not None, "expert_map cannot be None."
-            out, expert_tokens = torch.ops._C_ascend.dispatch_gmm_combine_decode(  # type: ignore
+            assert request.routing.expert_map is not None, "expert_map cannot be None."
+            out, expert_tokens = torch.ops._C_ascend.routing_gmm_combine_decode(  # type: ignore
                 x=request.hidden_states,
                 expert_ids=topk_ids,
                 gmm1_permuted_weight=request.weights.w1,
-                gmm1_permuted_weight_scale=request.quant_tensors.w1_scale,
+                gmm1_permuted_weight_scale=request.weights.w1_scale,
                 gmm2_weight=request.weights.w2,
-                gmm2_weight_scale=request.quant_tensors.w2_scale,
+                gmm2_weight_scale=request.weights.w2_scale,
                 expert_smooth_scales=None,
                 expert_scales=request.topk_weights.to(torch.float32),
                 group_ep=self.token_dispatcher.moe_all_to_all_group_name,

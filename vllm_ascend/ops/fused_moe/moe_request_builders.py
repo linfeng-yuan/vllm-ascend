@@ -5,21 +5,20 @@ from typing import TypeVar
 import torch
 
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    FusedExpertsRequest,
-    MlpComputeRequest,
-    MoEDispatchSpec,
-    MoEMlpKernelSpec,
-    MoEMlpSpec,
-    MoEMxfpSpec,
-    MoEQuantSpec,
-    MoEQuantTensors,
-    MoEWeightPack,
-    TokenDispatchRequest,
-    TokenDispatchResult,
+    MoEFusedExpertsInput,
+    MoEMlpComputeInput,
+    MoEMlpKernelParams,
+    MoEMlpParams,
+    MoEMxfpParams,
+    MoEQuantParams,
+    MoEWeights,
+    MoERoutingParams,
+    MoETokenDispatchInput,
+    MoETokenDispatchOutput,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 
-TCombineContext = TypeVar("TCombineContext")
+TMoERoutingMetadata = TypeVar("TMoERoutingMetadata")
 
 
 def build_fused_experts_request(
@@ -42,25 +41,31 @@ def build_fused_experts_request(
     w1_bias: torch.Tensor | None = None,
     w2_bias: torch.Tensor | None = None,
     comm_quant_mode: int | None = None,
-    mxfp: MoEMxfpSpec | None = None,
+    mxfp: MoEMxfpParams | None = None,
     w1_scale: list[torch.Tensor] | torch.Tensor | None = None,
     w2_scale: list[torch.Tensor] | torch.Tensor | None = None,
     w1_scale_bias: torch.Tensor | None = None,
     w2_scale_bias: torch.Tensor | None = None,
     w1_offset: torch.Tensor | None = None,
     w2_offset: torch.Tensor | None = None,
-) -> FusedExpertsRequest:
-    return FusedExpertsRequest(
+) -> MoEFusedExpertsInput:
+    return MoEFusedExpertsInput(
         hidden_states=hidden_states,
         topk_weights=topk_weights,
         topk_ids=topk_ids,
-        weights=MoEWeightPack(
+        weights=MoEWeights(
             w1=w1,
             w2=w2,
             w1_bias=w1_bias,
             w2_bias=w2_bias,
+            w1_scale=w1_scale,
+            w2_scale=w2_scale,
+            w1_scale_bias=w1_scale_bias,
+            w2_scale_bias=w2_scale_bias,
+            w1_offset=w1_offset,
+            w2_offset=w2_offset,
         ),
-        dispatch=MoEDispatchSpec(
+        routing=MoERoutingParams(
             expert_map=expert_map,
             global_redundant_expert_num=global_redundant_expert_num,
             mc2_mask=mc2_mask,
@@ -69,37 +74,29 @@ def build_fused_experts_request(
             log2phy=log2phy,
             pertoken_scale=pertoken_scale,
         ),
-        mlp=MoEMlpSpec(
+        mlp=MoEMlpParams(
             activation=activation,
             need_trans=need_trans,
             dynamic_eplb=dynamic_eplb,
         ),
-        quant=MoEQuantSpec(
+        quant=MoEQuantParams(
             quant_type=quant_type,
             comm_quant_mode=comm_quant_mode,
             mxfp=mxfp,
-        ),
-        quant_tensors=MoEQuantTensors(
-            w1_scale=w1_scale,
-            w2_scale=w2_scale,
-            w1_scale_bias=w1_scale_bias,
-            w2_scale_bias=w2_scale_bias,
-            w1_offset=w1_offset,
-            w2_offset=w2_offset,
         ),
     )
 
 
 def build_token_dispatch_request(
     *,
-    request: FusedExpertsRequest,
+    request: MoEFusedExpertsInput,
     topk_ids: torch.Tensor | None = None,
-) -> TokenDispatchRequest:
-    return TokenDispatchRequest(
+) -> MoETokenDispatchInput:
+    return MoETokenDispatchInput(
         hidden_states=request.hidden_states,
         topk_weights=request.topk_weights,
         topk_ids=request.topk_ids if topk_ids is None else topk_ids,
-        dispatch=request.dispatch,
+        routing=request.routing,
         quant=request.quant,
     )
 
@@ -107,9 +104,9 @@ def build_token_dispatch_request(
 def build_mlp_kernel_spec(
     *,
     hidden_states: torch.Tensor,
-    quant: MoEQuantSpec,
+    quant: MoEQuantParams,
     use_fusion_ops: bool,
-) -> MoEMlpKernelSpec:
+) -> MoEMlpKernelParams:
     act_quant_type = torch.float8_e4m3fn
     weight_quant_type = torch.float8_e4m3fn
     scale_type = None
@@ -125,7 +122,7 @@ def build_mlp_kernel_spec(
         per_token_scale_type = quant.mxfp.per_token_scale_dtype
         use_bf16 = quant.mxfp.use_bf16
 
-    return MoEMlpKernelSpec(
+    return MoEMlpKernelParams(
         fusion=quant.quant_type in (QuantType.W8A8, QuantType.MXFP8) and use_fusion_ops,
         use_mxfp_quant=use_mxfp_quant,
         act_quant_type=act_quant_type,
@@ -138,11 +135,11 @@ def build_mlp_kernel_spec(
 
 def build_mlp_compute_request(
     *,
-    request: FusedExpertsRequest,
-    dispatch_result: TokenDispatchResult[TCombineContext],
+    request: MoEFusedExpertsInput,
+    dispatch_result: MoETokenDispatchOutput[TMoERoutingMetadata],
     use_fusion_ops: bool,
-) -> MlpComputeRequest:
-    return MlpComputeRequest(
+) -> MoEMlpComputeInput:
+    return MoEMlpComputeInput(
         hidden_states=dispatch_result.hidden_states,
         group_list=dispatch_result.group_list,
         group_list_type=dispatch_result.group_list_type,
@@ -150,7 +147,6 @@ def build_mlp_compute_request(
         topk_scales=dispatch_result.topk_scales,
         weights=request.weights,
         quant=request.quant,
-        quant_tensors=request.quant_tensors,
         mlp=request.mlp,
         kernel=build_mlp_kernel_spec(
             hidden_states=dispatch_result.hidden_states,

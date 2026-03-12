@@ -26,7 +26,7 @@ from vllm_ascend.device.mxfp_compat import (
     ensure_mxfp8_moe_available,
 )
 from vllm_ascend.ops.activation import AscendSwigluOAIAndMul
-from vllm_ascend.ops.fused_moe.moe_runtime_args import MlpComputeRequest
+from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEMlpComputeInput
 from vllm_ascend.utils import (
     dispose_tensor,
     enable_custom_op,
@@ -361,7 +361,7 @@ def unquant_apply_mlp(
     return hidden_states
 
 
-def unified_apply_mlp(*, request: MlpComputeRequest) -> torch.Tensor:
+def unified_apply_mlp(*, request: MoEMlpComputeInput) -> torch.Tensor:
     """
     Unified MoE MLP entry.
     Quant path is dispatched by DeviceOperator with explicit typed kernel flags.
@@ -375,12 +375,12 @@ def unified_apply_mlp(*, request: MlpComputeRequest) -> torch.Tensor:
     w2 = request.weights.w2
     w1_bias = request.weights.w1_bias
     w2_bias = request.weights.w2_bias
-    w1_scale = request.quant_tensors.w1_scale
-    w2_scale = request.quant_tensors.w2_scale
-    w1_scale_bias = request.quant_tensors.w1_scale_bias
-    w2_scale_bias = request.quant_tensors.w2_scale_bias
-    w1_offset = request.quant_tensors.w1_offset
-    w2_offset = request.quant_tensors.w2_offset
+    w1_scale = request.weights.w1_scale
+    w2_scale = request.weights.w2_scale
+    w1_scale_bias = request.weights.w1_scale_bias
+    w2_scale_bias = request.weights.w2_scale_bias
+    w1_offset = request.weights.w1_offset
+    w2_offset = request.weights.w2_offset
     activation = request.mlp.activation
     need_trans = request.mlp.need_trans
     dynamic_eplb = request.mlp.dynamic_eplb
