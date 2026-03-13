@@ -278,7 +278,7 @@ class FusionOp(DecodeMoeOps):
     def _apply_ops(self, x, expert_ids, smooth_scales, expert_scales,
                    x_active_mask):
         smooth_scales = torch.zeros(128 * 1024 * 1024).npu()
-        output = torch.ops._C_ascend.routing_gmm_combine_decode(
+        output = torch.ops._C_ascend.dispatch_gmm_combine_decode(
             x=x,
             expert_ids=expert_ids,
             gmm1_permuted_weight=self.gmm1_weight,

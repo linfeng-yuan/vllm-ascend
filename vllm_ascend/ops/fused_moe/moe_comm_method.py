@@ -281,7 +281,7 @@ class FusedMC2CommImpl(MoECommMethod):
         expert_tokens = None
         if envs_ascend.VLLM_ASCEND_ENABLE_FUSED_MC2 == 1:
             out = torch.empty_like(request.hidden_states)
-            torch.ops._C_ascend.routing_ffn_combine(  # type: ignore
+            torch.ops._C_ascend.dispatch_ffn_combine(  # type: ignore
                 x=request.hidden_states,
                 weight1=request.weights.w1,
                 weight2=request.weights.w2,
@@ -297,7 +297,7 @@ class FusedMC2CommImpl(MoECommMethod):
             expert_tokens = self.expert_token_nums
         elif envs_ascend.VLLM_ASCEND_ENABLE_FUSED_MC2 == 2:
             assert request.routing.expert_map is not None, "expert_map cannot be None."
-            out, expert_tokens = torch.ops._C_ascend.routing_gmm_combine_decode(  # type: ignore
+            out, expert_tokens = torch.ops._C_ascend.dispatch_gmm_combine_decode(  # type: ignore
                 x=request.hidden_states,
                 expert_ids=topk_ids,
                 gmm1_permuted_weight=request.weights.w1,
