@@ -268,9 +268,9 @@ class TestAscendW4A16FusedMoEMethod(TestBase):
         self.assertTrue(
             torch.equal(layer.w2_weight_packed.data, original_w2_data))
 
-    @patch("vllm_ascend.quantization.methods.w4a16.get_forward_context")
+    @patch("vllm_ascend.quantization.methods.w4a16._EXTRA_CTX")
     @patch("vllm_ascend.quantization.methods.w4a16.select_experts")
-    def test_apply_uses_explicit_dispatch_and_mlp_args(self, mock_select_experts, mock_get_forward_context):
+    def test_apply_uses_explicit_dispatch_and_mlp_args(self, mock_select_experts, mock_extra_ctx):
         tokens = 3
         hidden_size = self.output_size
         layer = self.build_layer()
@@ -284,10 +284,8 @@ class TestAscendW4A16FusedMoEMethod(TestBase):
         mock_select_experts.return_value = (topk_weights, topk_ids)
         mock_comm = Mock()
         mock_comm.fused_experts.return_value = torch.randn(tokens, hidden_size, dtype=torch.float32)
-        mock_get_forward_context.return_value = Mock(
-            moe_comm_method=mock_comm,
-            moe_comm_type=MoECommType.ALLGATHER,
-        )
+        mock_extra_ctx.moe_comm_method = mock_comm
+        mock_extra_ctx.moe_comm_type = MoECommType.ALLGATHER
 
         self.quant_method.apply(
             layer=layer,
