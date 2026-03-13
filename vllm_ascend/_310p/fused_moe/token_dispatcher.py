@@ -26,7 +26,7 @@ import torch
 from vllm.distributed.parallel_state import get_ep_group
 
 from vllm_ascend.ops.fused_moe.moe_runtime_args import MoEAllGatherRoutingMetadata, MoETokenDispatchInput
-from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather, MoETokenDispatchOutput
+from vllm_ascend.ops.fused_moe.token_dispatcher import MoETokenDispatchOutput, TokenDispatcherWithAllGather
 
 
 class TokenDispatcherWithAllGather310(TokenDispatcherWithAllGather):
