@@ -11,10 +11,10 @@ from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEMlpParams,
     MoEMxfpParams,
     MoEQuantParams,
-    MoEWeights,
     MoERoutingParams,
     MoETokenDispatchInput,
     MoETokenDispatchOutput,
+    MoEWeights,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 

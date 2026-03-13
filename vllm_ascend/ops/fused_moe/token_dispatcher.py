@@ -42,6 +42,7 @@ from vllm_ascend.ops.fused_moe.moe_runtime_args import (
 )
 from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type, is_hierarchical_communication_enabled
 
+
 class MoETokenDispatcher(ABC, Generic[TMoERoutingMetadata]):
     def __init__(self, **kwargs) -> None:
         """
@@ -571,7 +572,9 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllRoutingMetadata]
         )
         return global_input_tokens, dynamic_scale_after_all2all, reversed_global_input_permutation_mapping
 
-    def _combine_preprocess(self, hidden_states: torch.Tensor, routing_metadata: MoEAllToAllRoutingMetadata) -> torch.Tensor:
+    def _combine_preprocess(
+        self, hidden_states: torch.Tensor, routing_metadata: MoEAllToAllRoutingMetadata
+    ) -> torch.Tensor:
         # Unpermutation 2: expert output to AlltoAll input
         rev_global = routing_metadata.reversed_global_input_permutation_mapping
         if hidden_states.shape[0] > 0 and self.num_local_experts > 1 and rev_global is not None:
