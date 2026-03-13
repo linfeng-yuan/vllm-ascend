@@ -21,7 +21,7 @@ from vllm_ascend.quantization.quant_type import QuantType
 TMoERoutingMetadata = TypeVar("TMoERoutingMetadata")
 
 
-def build_fused_experts_request(
+def build_fused_experts_input(
     *,
     hidden_states: torch.Tensor,
     topk_weights: torch.Tensor,
@@ -87,7 +87,7 @@ def build_fused_experts_request(
     )
 
 
-def build_token_dispatch_request(
+def build_token_dispatch_input(
     *,
     request: MoEFusedExpertsInput,
     topk_ids: torch.Tensor | None = None,
@@ -101,7 +101,7 @@ def build_token_dispatch_request(
     )
 
 
-def build_mlp_kernel_spec(
+def build_mlp_kernel_params(
     *,
     hidden_states: torch.Tensor,
     quant: MoEQuantParams,
@@ -133,7 +133,7 @@ def build_mlp_kernel_spec(
     )
 
 
-def build_mlp_compute_request(
+def build_mlp_compute_input(
     *,
     request: MoEFusedExpertsInput,
     dispatch_result: MoETokenDispatchOutput[TMoERoutingMetadata],
@@ -148,7 +148,7 @@ def build_mlp_compute_request(
         weights=request.weights,
         quant=request.quant,
         mlp=request.mlp,
-        kernel=build_mlp_kernel_spec(
+        kernel=build_mlp_kernel_params(
             hidden_states=dispatch_result.hidden_states,
             quant=request.quant,
             use_fusion_ops=use_fusion_ops,

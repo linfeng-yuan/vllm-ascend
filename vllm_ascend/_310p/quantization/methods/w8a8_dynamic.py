@@ -25,7 +25,7 @@ from vllm.distributed import get_ep_group
 from vllm_ascend._310p.fused_moe.experts_selector import select_experts
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.ops.fused_moe.experts_selector import zero_experts_compute
-from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_input
 from vllm_ascend.quantization.methods.base import AscendMoEScheme, QuantType
 
 from .registry import register_scheme
@@ -131,7 +131,7 @@ class AscendW8A8DynamicFusedMoEMethod310(AscendMoEScheme):
         moe_comm_method = _EXTRA_CTX.moe_comm_method
 
         final_hidden_states = moe_comm_method.fused_experts(
-            request=build_fused_experts_request(
+            request=build_fused_experts_input(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeAlias
 
 import torch
 
-MoEWeightTensor = torch.Tensor | list[torch.Tensor]
-MoEOptionalQuantTensor = list[torch.Tensor] | torch.Tensor | None
+MoEWeightTensor: TypeAlias = torch.Tensor | list[torch.Tensor]
+MoEOptionalQuantTensor: TypeAlias = list[torch.Tensor] | torch.Tensor | None
 
 
 @dataclass(frozen=True, slots=True)

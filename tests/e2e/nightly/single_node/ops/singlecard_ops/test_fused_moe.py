@@ -29,14 +29,14 @@ import torch_npu
 from vllm.model_executor.layers.activation import SiluAndMul
 
 from vllm_ascend.ops.fused_moe.experts_selector import check_npu_moe_gating_top_k, select_experts
-from vllm_ascend.ops.fused_moe.moe_request_builders import (
-    build_fused_experts_request,
-    build_mlp_compute_request,
-)
 from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
+from vllm_ascend.ops.fused_moe.moe_request_builders import (
+    build_fused_experts_input,
+    build_mlp_compute_input,
+)
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
-    MoERoutingParams,
     MoEQuantParams,
+    MoERoutingParams,
     MoETokenDispatchInput,
 )
 from vllm_ascend.ops.fused_moe.token_dispatcher import TokenDispatcherWithAllGather
@@ -237,8 +237,8 @@ def test_token_dispatcher_with_all_gather_quant(
 
         routing_metadata = dispatch_output.routing_metadata
 
-        mlp_request = build_mlp_compute_request(
-            request=build_fused_experts_request(
+        mlp_request = build_mlp_compute_input(
+            request=build_fused_experts_input(
                 hidden_states=a,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

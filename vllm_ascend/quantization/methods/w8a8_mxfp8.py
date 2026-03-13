@@ -31,7 +31,7 @@ from vllm_ascend.device.mxfp_compat import (
     ensure_mxfp8_moe_available,
 )
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
-from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_input
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEMxfpParams,
 )
@@ -196,7 +196,7 @@ class AscendW8A8MXFP8DynamicFusedMoEMethod(AscendMoEScheme):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         return moe_comm_method.fused_experts(
-            request=build_fused_experts_request(
+            request=build_fused_experts_input(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

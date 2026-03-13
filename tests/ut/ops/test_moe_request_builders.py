@@ -1,18 +1,18 @@
 import unittest
 
 import torch
-import vllm_ascend.ops.fused_moe.moe_runtime_args as runtime_args
 
+import vllm_ascend.ops.fused_moe.moe_runtime_args as runtime_args
 from vllm_ascend.ops.fused_moe.moe_request_builders import (
-    build_fused_experts_request,
-    build_mlp_compute_request,
-    build_token_dispatch_request,
+    build_fused_experts_input,
+    build_mlp_compute_input,
+    build_token_dispatch_input,
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEAllGatherRoutingMetadata,
-    MoEWeights,
     MoEMxfpParams,
     MoETokenDispatchOutput,
+    MoEWeights,
 )
 from vllm_ascend.quantization.quant_type import QuantType
 
@@ -45,7 +45,7 @@ class TestMoERequestBuilders(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 self.assertTrue(hasattr(runtime_args, symbol))
 
-    def test_build_fused_experts_request_preserves_runtime_semantics(self):
+    def test_build_fused_experts_input_preserves_runtime_semantics(self):
         for quant_type in (
             QuantType.NONE,
             QuantType.W4A16,
@@ -57,7 +57,7 @@ class TestMoERequestBuilders(unittest.TestCase):
                 hidden_states = torch.randn(4, 8)
                 topk_weights = torch.randn(4, 2)
                 topk_ids = torch.randint(0, 4, (4, 2), dtype=torch.int32)
-                request = build_fused_experts_request(
+                request = build_fused_experts_input(
                     hidden_states=hidden_states,
                     topk_weights=topk_weights,
                     topk_ids=topk_ids,
@@ -83,7 +83,7 @@ class TestMoERequestBuilders(unittest.TestCase):
                 self.assertEqual(request.mlp.activation, "gelu")
                 self.assertEqual(request.quant.quant_type, quant_type)
 
-    def test_build_fused_experts_request_merges_dense_and_quant_weights(self):
+    def test_build_fused_experts_input_merges_dense_and_quant_weights(self):
         w1 = torch.randn(2, 8, 16)
         w2 = torch.randn(2, 16, 8)
         w1_scale = [torch.randn(1)]
@@ -93,7 +93,7 @@ class TestMoERequestBuilders(unittest.TestCase):
         w1_offset = torch.randn(1)
         w2_offset = torch.randn(1)
 
-        request = build_fused_experts_request(
+        request = build_fused_experts_input(
             hidden_states=torch.randn(4, 8),
             topk_weights=torch.randn(4, 2),
             topk_ids=torch.randint(0, 4, (4, 2), dtype=torch.int32),
@@ -119,8 +119,8 @@ class TestMoERequestBuilders(unittest.TestCase):
         self.assertIs(request.weights.w1_offset, w1_offset)
         self.assertIs(request.weights.w2_offset, w2_offset)
 
-    def test_build_token_dispatch_request_supports_remapped_topk_ids(self):
-        request = build_fused_experts_request(
+    def test_build_token_dispatch_input_supports_remapped_topk_ids(self):
+        request = build_fused_experts_input(
             hidden_states=torch.randn(2, 4),
             topk_weights=torch.randn(2, 1),
             topk_ids=torch.tensor([[0], [1]], dtype=torch.int32),
@@ -131,7 +131,7 @@ class TestMoERequestBuilders(unittest.TestCase):
         )
         routed_topk_ids = torch.tensor([[3], [2]], dtype=torch.int32)
 
-        dispatch_request = build_token_dispatch_request(
+        dispatch_request = build_token_dispatch_input(
             request=request,
             topk_ids=routed_topk_ids,
         )
@@ -142,8 +142,8 @@ class TestMoERequestBuilders(unittest.TestCase):
         self.assertIs(dispatch_request.quant, request.quant)
         self.assertIs(dispatch_request.topk_ids, routed_topk_ids)
 
-    def test_build_mlp_compute_request_derives_kernel_spec(self):
-        request = build_fused_experts_request(
+    def test_build_mlp_compute_input_derives_kernel_params(self):
+        request = build_fused_experts_input(
             hidden_states=torch.randn(2, 8, dtype=torch.bfloat16),
             topk_weights=torch.randn(2, 2),
             topk_ids=torch.tensor([[0, 1], [1, 0]], dtype=torch.int32),
@@ -173,7 +173,7 @@ class TestMoERequestBuilders(unittest.TestCase):
             ),
         )
 
-        mlp_request = build_mlp_compute_request(
+        mlp_request = build_mlp_compute_input(
             request=request,
             dispatch_result=dispatch_result,
             use_fusion_ops=True,

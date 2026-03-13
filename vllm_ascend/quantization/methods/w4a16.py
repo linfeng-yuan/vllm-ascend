@@ -25,7 +25,7 @@ from vllm.config import get_current_vllm_config
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
-from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_input
 
 from .base import AscendMoEScheme, QuantType
 from .registry import register_scheme
@@ -223,7 +223,7 @@ class AscendW4A16FusedMoEMethod(AscendMoEScheme):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         return moe_comm_method.fused_experts(
-            request=build_fused_experts_request(
+            request=build_fused_experts_input(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,

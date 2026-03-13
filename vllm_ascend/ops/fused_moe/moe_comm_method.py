@@ -25,8 +25,8 @@ import vllm_ascend.envs as envs_ascend
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.ops.fused_moe.moe_mlp import unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_request_builders import (
-    build_mlp_compute_request,
-    build_token_dispatch_request,
+    build_mlp_compute_input,
+    build_token_dispatch_input,
 )
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEFusedExpertsInput,
@@ -131,13 +131,13 @@ class MoECommMethod(ABC):
         if request.routing.log2phy is not None:
             routed_topk_ids = request.routing.log2phy[routed_topk_ids]
 
-        dispatch_request = build_token_dispatch_request(
+        dispatch_request = build_token_dispatch_input(
             request=request,
             topk_ids=routed_topk_ids,
         )
         dispatch_results = self.token_dispatcher.token_dispatch(request=dispatch_request)
 
-        mlp_request = build_mlp_compute_request(
+        mlp_request = build_mlp_compute_input(
             request=request,
             dispatch_result=dispatch_results,
             use_fusion_ops=self.use_fusion_ops,

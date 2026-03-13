@@ -25,7 +25,7 @@ from vllm.model_executor.layers.fused_moe.shared_fused_moe import SharedFusedMoE
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.ops.fused_moe.experts_selector import zero_experts_compute
 from vllm_ascend.ops.fused_moe.moe_comm_method import FusedExpertsResult, _MoECommMethods
-from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_request
+from vllm_ascend.ops.fused_moe.moe_request_builders import build_fused_experts_input
 from vllm_ascend.quantization.quant_type import QuantType
 
 from .experts_selector import select_experts
@@ -94,7 +94,7 @@ class AscendUnquantizedFusedMoEMethod310(UnquantizedFusedMoEMethod):
 
         moe_comm_method = _EXTRA_CTX.moe_comm_method
         final_hidden_states = moe_comm_method.fused_experts(
-            request=build_fused_experts_request(
+            request=build_fused_experts_input(
                 hidden_states=x,
                 topk_weights=topk_weights,
                 topk_ids=topk_ids,
