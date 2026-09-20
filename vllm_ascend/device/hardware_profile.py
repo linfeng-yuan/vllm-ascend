@@ -131,6 +131,8 @@ class HardwareCapability(Enum):
     REDUCED_CUDAGRAPH_CAPTURE_SIZES = auto()
     # Import and register the compiled vLLM-Ascend custom-op library at runtime.
     # This is independent of whether custom ops are enabled by default.
+    # Use the fused RMSNorm+cast operator available on A3/CANN 9.1.
+    RMS_NORM_CAST = auto()
     RUNTIME_CUSTOM_OPS = auto()
     # Allow C8 SFA decode-context parallelism with a replicated indexer.
     SFA_C8_DCP_REPLICATED_INDEXER = auto()
@@ -253,6 +255,7 @@ _STANDARD_CAPABILITIES = frozenset(
 _A3_CAPABILITIES = _STANDARD_CAPABILITIES | {
     HardwareCapability.MC2_FULLMESH_V2_COMM,
     HardwareCapability.MINIMAX_M3_PREFILL_KV_GATHER_Q,
+    HardwareCapability.RMS_NORM_CAST,
 }
 _DEFAULT_WORKER_CLS = "vllm_ascend.worker.worker.NPUWorker"
 _HARDWARE_PROFILES: Mapping[AscendDeviceType, HardwareProfile] = MappingProxyType(

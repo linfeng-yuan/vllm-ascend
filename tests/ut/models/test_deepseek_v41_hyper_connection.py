@@ -145,8 +145,11 @@ def test_v41_rms_norm_cast_preserves_rounded_routing_input(dtype):
     norm.variance_epsilon = 1e-6
     layer.post_attention_layernorm = norm
 
+    profile = MagicMock()
+    profile.supports.return_value = True
     with (
         patch("vllm_ascend.models.deepseek_v41.model.enable_custom_op", return_value=True),
+        patch.object(deepseek_v41_module, "get_current_hardware_profile", return_value=profile),
         patch.object(
             torch.ops._C_ascend,
             "npu_rms_norm_cast",
@@ -161,6 +164,32 @@ def test_v41_rms_norm_cast_preserves_rounded_routing_input(dtype):
     op.assert_called_once_with(x, norm.weight, norm.variance_epsilon)
     assert actual_fp32 is normalized_fp32
     norm.assert_not_called()
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_v41_rms_norm_cast_falls_back_when_hardware_does_not_support_it(dtype):
+    layer = _layer()
+    x = torch.randn(2, 8, dtype=dtype)
+    normalized = torch.randn_like(x)
+    norm = MagicMock(return_value=normalized)
+    norm.weight = torch.ones(8, dtype=dtype)
+    norm.variance_epsilon = 1e-6
+    layer.post_attention_layernorm = norm
+
+    profile = MagicMock()
+    profile.supports.return_value = False
+    op = MagicMock(return_value=(normalized, normalized.float()))
+    with (
+        patch("vllm_ascend.models.deepseek_v41.model.enable_custom_op", return_value=True),
+        patch.object(deepseek_v41_module, "get_current_hardware_profile", return_value=profile),
+        patch.object(torch.ops._C_ascend, "npu_rms_norm_cast", op, create=True),
+    ):
+        actual, actual_fp32 = layer.rms_norm_cast(x)
+
+    assert actual is normalized
+    torch.testing.assert_close(actual_fp32, normalized.float(), rtol=0, atol=0)
+    norm.assert_called_once_with(x)
+    op.assert_not_called()
 
 
 def test_v41_hc_reference_supports_hidden_size_5120():
