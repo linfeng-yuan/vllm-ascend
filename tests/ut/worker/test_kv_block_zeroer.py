@@ -40,6 +40,26 @@ class _FakeKernel:
         return launch
 
 
+def test_physical_block_tensors_support_mixed_pages_and_deduplicate():
+    zeroer = AscendKVBlockZeroer(torch.device("cpu"), pin_memory=False)
+    small = torch.empty(4 * 32, dtype=torch.int8)
+    large = torch.empty(4 * 64, dtype=torch.int8)
+    zeroer.init_meta(
+        attn_groups_iter=[],
+        kernel_block_sizes=[],
+        cache_dtype="auto",
+        runner_only_attn_layers=set(),
+        static_forward_context={},
+        physical_block_tensors=[small, small, large],
+        num_blocks=4,
+    )
+    assert zeroer._meta is not None
+    addresses, sizes, max_chunks, block_size, n_segs = zeroer._meta
+    assert addresses.tolist() == [small.data_ptr(), large.data_ptr()]
+    assert sizes.tolist() == [8, 16]
+    assert (max_chunks, block_size, n_segs) == (2, 8, 2)
+
+
 def test_init_meta_supports_non_uniform_page_sizes() -> None:
     """MLA K/V cache segments may have different sizes per logical block."""
     device = torch.device("cpu")
