@@ -1464,7 +1464,7 @@ class NPUModelRunner(GPUModelRunner):
                 self.mrope_positions.cpu,
                 non_blocking=True,
             )
-        elif vllm_version_is("0.29.0") and self.uses_xdrope_dim > 0:
+        elif vllm_version_is("0.28.0") and self.uses_xdrope_dim > 0:
             self._calc_xdrope_positions(scheduler_output)
             # Only relevant for models using XD-RoPE (e.g, HunYuan-VL)
             self.xdrope_positions.gpu[:, :total_num_scheduled_tokens].copy_(
@@ -1624,7 +1624,7 @@ class NPUModelRunner(GPUModelRunner):
             self.positions[:total_num_scheduled_tokens],
         )
 
-        if self.use_async_spec_decode and (self.uses_mrope or (vllm_version_is("0.29.0") and self.uses_xdrope_dim > 0)):
+        if self.use_async_spec_decode and (self.uses_mrope or (vllm_version_is("0.28.0") and self.uses_xdrope_dim > 0)):
             drift = self.num_computed_tokens[req_indices_gpu].to(
                 torch.int64
             ) - computed_token_tensor_cpu[req_indices_gpu]
@@ -3603,10 +3603,9 @@ class NPUModelRunner(GPUModelRunner):
                 else None
             )
             kv_cache_spec = kv_cache_groups[kv_cache_gid].kv_cache_spec
-            needs_block_table_cpu = (
-                self.ascend_config.enable_engram
-                and _needs_engram_block_table_cpu(kv_cache_spec)
-            )
+            needs_block_table_cpu = getattr(
+                self.ascend_config, "enable_engram", False
+            ) and _needs_engram_block_table_cpu(kv_cache_spec)
             if cached_views is None:
                 if isinstance(kv_cache_spec, EncoderOnlyAttentionSpec):
                     blk_table_tensor = torch.zeros(
@@ -4280,7 +4279,7 @@ class NPUModelRunner(GPUModelRunner):
 
             if self.uses_mrope:
                 positions = self.mrope_positions.gpu[:, :num_tokens_padded]
-            elif vllm_version_is("0.29.0") and self.uses_xdrope_dim > 0:
+            elif vllm_version_is("0.28.0") and self.uses_xdrope_dim > 0:
                 positions = self.xdrope_positions.gpu[:, :num_tokens_padded]
             else:
                 positions = self.positions[:num_tokens_padded]

@@ -182,6 +182,15 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
         super().__init__(vllm_config, device, pass_hidden_states_to_model, runner=runner)
         self._ensure_query_start_loc_arange_capacity()
 
+        # vLLM main no longer caches these values on the base proposer. Keep
+        # the Ascend xD-RoPE paths compatible with both API shapes.
+        self.uses_xdrope_dim = getattr(
+            self, "uses_xdrope_dim", getattr(vllm_config.model_config, "uses_xdrope_dim", 0)
+        )
+        self.draft_uses_xdrope_dim = getattr(
+            self, "draft_uses_xdrope_dim", getattr(self.draft_model_config, "uses_xdrope_dim", 0)
+        )
+
         # Assign runner before it's used in the methods below
         self.runner = runner
 

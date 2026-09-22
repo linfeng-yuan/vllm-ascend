@@ -36,7 +36,7 @@ def get_storage_block_size(kv_cache_spec: KVCacheSpec) -> int:
         storage_block_sizes = {get_storage_block_size(spec) for spec in kv_cache_spec.kv_cache_specs.values()}
         assert len(storage_block_sizes) == 1, "All specs in one KV cache group must use the same storage block size."
         return storage_block_sizes.pop()
-    if not vllm_version_is("0.29.0"):
+    if not vllm_version_is("0.28.0"):
         # vLLM #53906 added an optional MLA storage-view override. It is not
         # Ascend's derived number of physical rows per logical block.
         if isinstance(kv_cache_spec, AscendMLAAttentionSpec):
@@ -112,7 +112,7 @@ class AscendMLAAttentionSpec(MLAAttentionSpec):
     # stride. vLLM main removed this field from AttentionSpec, but it remains
     # part of the Ascend runner/backend contract.
     indexes_kv_by_block_stride: bool = False
-    if vllm_version_is("0.29.0"):
+    if vllm_version_is("0.28.0"):
 
         @property
         def storage_block_size(self) -> int:
