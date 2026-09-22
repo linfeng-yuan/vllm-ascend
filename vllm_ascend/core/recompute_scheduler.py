@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import inspect
 import time
 from dataclasses import dataclass, fields
 
@@ -46,7 +47,10 @@ from vllm_ascend.core.dyntra_lb_scheduler import (
     DyntraLBPolicyMixin,
     print_scheduler_summary,
 )
-from vllm_ascend.utils import vllm_version_is
+
+
+_NEW_REQUEST_DATA_FROM_REQUEST_PARAMS = inspect.signature(NewRequestData.from_request).parameters
+_KV_CONNECTOR_BLOCK_STATE_USES_SNAPSHOTS = "block_ids" in KVConnectorBlockState.__dataclass_fields__
 
 
 @dataclass
@@ -852,10 +856,11 @@ class RecomputeScheduler(Scheduler):
                 num_common_prefix_blocks = self.kv_cache_manager.get_num_common_prefix_blocks(any_request_id)
 
         # Construct the scheduler output.
-        new_request_kwargs = {
-            "uses_mrope": self.model_uses_mrope,
-            **({"uses_xdrope": self.model_uses_xdrope} if vllm_version_is("0.29.0") else {}),
-        }
+        new_request_kwargs = {}
+        if "uses_mrope" in _NEW_REQUEST_DATA_FROM_REQUEST_PARAMS:
+            new_request_kwargs["uses_mrope"] = self.model_uses_mrope
+        if "uses_xdrope" in _NEW_REQUEST_DATA_FROM_REQUEST_PARAMS:
+            new_request_kwargs["uses_xdrope"] = getattr(self, "model_uses_xdrope", False)
         if self.use_v2_model_runner:
             scheduled_new_reqs.extend(scheduled_resumed_reqs)
             scheduled_resumed_reqs.clear()
@@ -900,7 +905,7 @@ class RecomputeScheduler(Scheduler):
             # new blocks. Resolve its current table only when the connector reads it.
             block_state_req_ids = set(num_scheduled_tokens)
             block_state_req_ids.update(req_id for req_id in boundary_state_offloads if req_id in self.requests)
-            if vllm_version_is("0.29.0"):
+            if _KV_CONNECTOR_BLOCK_STATE_USES_SNAPSHOTS:
                 snapshot_req_ids = {req.req_id for req in new_reqs_data}
                 snapshot_req_ids.update(
                     req_id
