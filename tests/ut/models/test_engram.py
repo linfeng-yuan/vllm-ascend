@@ -149,6 +149,23 @@ def test_gate_preserves_masked_rows():
     assert torch.equal(out[1], hidden[1]) and torch.isfinite(out.float()).all()
 
 
+@requires_upstream_hash
+def test_a5_checkpoint_without_quarot_uses_native_basis(tmp_path):
+    block = common.load_engram_rotation_block(tmp_path, hidden_size=64)
+    assert torch.equal(block, torch.eye(32))
+
+
+@requires_upstream_hash
+def test_a3_checkpoint_rotation_is_still_loaded(tmp_path):
+    optional = tmp_path / "optional"
+    optional.mkdir()
+    block = torch.linalg.qr(torch.randn(32, 32)).Q
+    rotation = torch.block_diag(block, block)
+    save_file({"global_rotation": rotation}, optional / "quarot.safetensors")
+    actual = common.load_engram_rotation_block(tmp_path, hidden_size=64)
+    assert torch.equal(actual, block)
+
+
 def _lookup_worker(rank, rendezvous):
     torch.set_num_threads(1)
     dist.init_process_group("gloo", init_method=rendezvous, rank=rank, world_size=4, timeout=timedelta(seconds=60))
@@ -195,6 +212,109 @@ def test_loader_quantizes_bf16_source_and_prefers_int8(tmp_path, quantized):
     table.load_checkpoint(tmp_path, key, chunk_rows=4)
     assert torch.equal(table.weight, expected_codes)
     assert torch.equal(table.weight_scale, expected_scales)
+
+
+def _mxfp8_fixture(rows, width):
+    values = (
+        (torch.arange(rows * width, dtype=torch.float32) % 31) - 15
+    ).reshape(rows, width)
+    weight = values.to(torch.float8_e4m3fn)
+    exponents = (
+        torch.arange(rows * (width // npu.SCALE_GROUP), dtype=torch.uint8)
+        % 5
+        + npu.E8M0_ONE_BITS
+    ).reshape(rows, width // npu.SCALE_GROUP)
+    scale = exponents.view(torch.float8_e8m0fnu)
+    reference = (
+        weight.float()
+        .unflatten(-1, (-1, npu.SCALE_GROUP))
+        .mul_(torch.pow(2.0, exponents.float() - npu.E8M0_ONE_BITS).unsqueeze(-1))
+        .flatten(-2)
+        .bfloat16()
+    )
+    return weight, scale, reference
+
+
+def test_mxfp8_hbm_lookup_preserves_checkpoint_quantization():
+    rows, width = 11, 64
+    weight, scale, reference = _mxfp8_fixture(rows, width)
+    table = npu.NodeShardedEngram(
+        rows,
+        width,
+        SimpleNamespace(size=1, rank=0),
+        device="cpu",
+        storage_format="mxfp8_hbm",
+    )
+    table.weight.data.copy_(weight.view(torch.uint8))
+    table.weight_scale.copy_(scale.view(torch.uint8))
+    ids = torch.tensor([[0, 7, 10], [3, 3, 1]])
+    actual = table.lookup_local(ids)
+    assert torch.equal(actual.view(torch.int16), reference[ids].view(torch.int16))
+
+
+def test_mxfp8_elastic_loader_keeps_local_payload_and_global_scales(
+    tmp_path, monkeypatch
+):
+    rows, width = 7, 64
+    key = "layers.1.engram.embed.weight"
+    scale_key = "layers.1.engram.embed.scale"
+    weight, scale, _ = _mxfp8_fixture(rows, width)
+    save_file({key: weight, scale_key: scale}, tmp_path / "model.safetensors")
+    (tmp_path / "model.safetensors.index.json").write_text(
+        json.dumps(
+            {
+                "weight_map": {
+                    key: "model.safetensors",
+                    scale_key: "model.safetensors",
+                }
+            }
+        )
+    )
+
+    class FakeElasticBuffer:
+        instance = None
+
+        @staticmethod
+        def get_engram_storage_size_hint(num_entries, hidden, dtype):
+            assert (num_entries, hidden, dtype) == (
+                4,
+                width,
+                torch.float8_e4m3fn,
+            )
+            return 2 * 1024 * 1024
+
+        def __init__(self, group, *, num_cpu_bytes):
+            assert group == "group" and num_cpu_bytes == 2 * 1024 * 1024
+            self.storage = None
+            self.scale = None
+            FakeElasticBuffer.instance = self
+
+        def engram_write(self, storage, sf):
+            self.storage = storage.clone()
+            self.scale = sf.clone()
+
+        def destroy(self):
+            pass
+
+    monkeypatch.setattr(npu, "_get_elastic_buffer_cls", lambda: FakeElasticBuffer)
+    table = npu.NodeShardedEngram(
+        rows,
+        width,
+        SimpleNamespace(size=2, rank=1, group="group"),
+        device="cpu",
+        storage_format="mxfp8_elastic",
+    )
+    table.load_checkpoint(tmp_path, key, chunk_rows=2)
+
+    written = FakeElasticBuffer.instance
+    assert written is not None
+    assert torch.equal(
+        written.storage[:3].view(torch.uint8), weight[4:7].view(torch.uint8)
+    )
+    assert not written.storage[3].view(torch.uint8).any()
+    assert torch.equal(written.scale[:rows].view(torch.uint8), scale.view(torch.uint8))
+    assert written.scale[rows:].view(torch.uint8).eq(npu.E8M0_ONE_BITS).all()
+    assert not hasattr(table, "weight")
 
 
 def _fake_host_library(host_address, device_offset):
@@ -265,6 +385,7 @@ def engram_model(monkeypatch):
     shell = SimpleNamespace(
         config=SimpleNamespace(engram_layer_ids=[1, 14], engram_max_ngram_size=4, engram_n_heads=8),
         layers=[SimpleNamespace(engram=SimpleNamespace(embed=SimpleNamespace(width=32))) for _ in range(15)],
+        has_engram=True,
         engram_rotation=torch.eye(32),
         _engram_max_tokens=16,
         _engram_input_buffers=None,
@@ -296,7 +417,7 @@ def test_graph_buffers_are_reused_and_refreshed(engram_model):
 
 
 def test_disabled_engram_capture_skips_layers(engram_model, monkeypatch):
-    monkeypatch.setattr(engram_model.engram_module, "engram_enabled", lambda config: False)
+    engram_model.has_engram = False
     engram_model.layers = [SimpleNamespace(engram=None) for _ in range(15)]
     for result in (
         engram_model.prepare_engram_graph_inputs(4),

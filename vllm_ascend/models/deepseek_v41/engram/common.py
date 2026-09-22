@@ -9,8 +9,11 @@ cache, while the Ascend runner hands this module CPU page boundaries and the
 physical page table, and the mirror stays on the host.
 """
 
+from pathlib import Path
+
 import numpy as np
 import torch
+from safetensors import safe_open
 from vllm.models.deepseek_v4_1.common.engram import (
     EngramLayout,
     build_compressed_token_map,
@@ -25,6 +28,21 @@ def engram_enabled(text_config) -> bool:
     """Whether the checkpoint declares Engram n-gram layers."""
 
     return bool(getattr(text_config, "engram_layer_ids", None))
+
+
+def load_engram_rotation_block(model_root, hidden_size):
+    """Load the A3 Quarot basis, or keep the native A5 basis unchanged."""
+
+    rotation_path = Path(model_root) / "optional/quarot.safetensors"
+    if not rotation_path.is_file():
+        return torch.eye(32)
+    with safe_open(rotation_path, framework="pt") as checkpoint:
+        rotation = checkpoint.get_tensor("global_rotation")
+    block = rotation[:32, :32].contiguous()
+    expected = torch.block_diag(*[block] * (hidden_size // 32))
+    if not torch.equal(rotation, expected):
+        raise ValueError("Engram gate requires repeated block32 global rotation")
+    return block
 
 
 def valid_engram_token_mask(

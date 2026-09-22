@@ -8,13 +8,11 @@ import typing
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice
-from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn.functional as F
 import vllm.envs as envs
-from safetensors import safe_open
 from torch import nn
 from transformers import AutoTokenizer, PretrainedConfig
 from vllm.config import ParallelConfig, VllmConfig, get_current_vllm_config
@@ -83,6 +81,7 @@ from .engram import (
     engram_cpu_offload,
     engram_enabled,
     engram_gate,
+    load_engram_rotation_block,
 )
 from .indexer import DeepseekV41Indexer
 
@@ -830,12 +829,31 @@ class DeepseekV41DecoderLayer(nn.Module):
         has_engram = _engram_enabled_for_runtime(config, vllm_config)
         if has_engram and not is_draft_layer and self.layer_idx in config.engram_layer_ids:
             self.engram = torch.nn.Module()
-            self.engram.wkv = torch.nn.Linear(
-                (config.engram_max_ngram_size - 1) * config.engram_n_heads * config.engram_head_dim,
-                (config.hc_mult + 1) * config.hidden_size,
-                bias=False,
-                dtype=torch.bfloat16,
+            wkv_input_size = (
+                (config.engram_max_ngram_size - 1)
+                * config.engram_n_heads
+                * config.engram_head_dim
             )
+            wkv_output_size = (config.hc_mult + 1) * config.hidden_size
+            if self.dsv41_backend is not None:
+                # A5 stores Engram WKV with the model's native quantization;
+                # use vLLM's linear loader so weight and scale stay paired.
+                self.engram.wkv = ReplicatedLinear(
+                    wkv_input_size,
+                    wkv_output_size,
+                    bias=False,
+                    quant_config=quant_config,
+                    prefix=f"{prefix}.engram.wkv",
+                    return_bias=False,
+                )
+            else:
+                # Preserve the established A3 BF16 checkpoint contract.
+                self.engram.wkv = torch.nn.Linear(
+                    wkv_input_size,
+                    wkv_output_size,
+                    bias=False,
+                    dtype=torch.bfloat16,
+                )
             self.engram.q_weight = torch.nn.Parameter(
                 torch.empty(config.hc_mult, config.hidden_size, dtype=torch.bfloat16)
             )
@@ -1029,17 +1047,32 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         self.engram_root = vllm_config.model_config.model
         config = self.config
         self.engram_weight_root = self.engram_root
-        # The table is INT8 with group-32 scales; whether it lives in host
-        # memory is vLLM's EngramConfig choice.
+        # A5 checkpoints already carry native MXFP8 Engram tables. Keep those
+        # bits in HBM by default, or use ElasticBuffer when cpu_offload is
+        # requested. A3 retains its established INT8/UVA implementation.
         cpu_offload = engram_cpu_offload(vllm_config)
+        if DeviceOperator.get_deepseek_v41_backend() is not None:
+            engram_storage = "mxfp8_elastic" if cpu_offload else "mxfp8_hbm"
+        else:
+            engram_storage = "int8_uva" if cpu_offload else "int8"
         if self.has_engram:
-            query_group = EngramQueryGroup.from_vllm(vllm_config.parallel_config)
+            # ElasticBuffer binds HCCL context memory to its process group.
+            # Give each table a distinct physical group; sharing one causes
+            # the second table's engram_write() to fail during initialization.
+            shared_query_group = (
+                None
+                if engram_storage == "mxfp8_elastic"
+                else EngramQueryGroup.from_vllm(vllm_config.parallel_config)
+            )
             for layer_id, rows in zip(config.engram_layer_ids, config.engram_num_embeddings):
+                query_group = shared_query_group or EngramQueryGroup.from_vllm(
+                    vllm_config.parallel_config
+                )
                 self.layers[layer_id].engram.embed = NodeShardedEngram(
                     rows,
                     config.engram_head_dim,
                     query_group,
-                    cpu_offload=cpu_offload,
+                    storage_format=engram_storage,
                 )
         self.engram_history = None
         self._engram_input_buffers = None
@@ -1052,9 +1085,10 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             with torch.device("cpu"):
                 tokenizer = AutoTokenizer.from_pretrained(self.engram_root)
                 self.engram_history = PagedNgramHistory(config, tokenizer)
-                with safe_open(Path(self.engram_root) / "optional/quarot.safetensors", framework="pt") as file:
-                    rotation = file.get_tensor("global_rotation")
-                block = rotation[:32, :32].contiguous()
+                block = load_engram_rotation_block(
+                    self.engram_root,
+                    config.hidden_size,
+                )
             self.engram_rotation.copy_(block)
 
     def _make_empty_intermediate_tensors(self, batch_size, dtype, device):
@@ -1295,24 +1329,30 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
                 if ".engram." in name:
                     # Bypass V4's generic embed -> embed_tokens remapping and TP loader.
                     local_name = name.removeprefix("model.")
-                    # Compressed Engram scales are consumed by the shard loader.
+                    # Embedding scales are consumed by the shard loader. Other
+                    # Engram weights must keep using the generic loader so its
+                    # quantized ``scale`` -> ``weight_scale`` mapping applies.
                     if local_name.endswith(".engram.embed.scale"):
                         continue
-                    parameter_name = "model." + local_name
                     if local_name.endswith(".engram.embed.weight"):
                         layer_id = int(local_name.split(".")[1])
                         self.model.layers[layer_id].engram.embed.load_checkpoint(
                             self.model.engram_weight_root, local_name
                         )
+                        engram_loaded.add("model." + local_name)
                     else:
-                        param = self.get_parameter(parameter_name)
-                        param.data.copy_(tensor)
-                    engram_loaded.add(parameter_name)
+                        yield name, tensor
                 elif self._is_milestone_weight(name):
                     yield name, tensor
 
         loaded = self._load_model_weights(milestone_weights())
-        return loaded | engram_loaded
+        loaded.update(engram_loaded)
+        expected = {
+            name for name, _ in self.named_parameters() if ".engram." in name
+        }
+        if missing := expected - loaded:
+            raise ValueError(f"Missing Engram weights: {missing}")
+        return loaded
 
     def set_moe_parameters(self):
         self.expert_weights = []
