@@ -13,7 +13,6 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 import vllm.envs as envs
-from safetensors import safe_open
 from torch import nn
 from transformers import PretrainedConfig
 from vllm.config import ParallelConfig, VllmConfig, get_current_vllm_config
@@ -86,6 +85,7 @@ from .engram import (
     engram_dead_mask,
     engram_enabled,
 )
+from .engram.common import load_engram_rotation_block
 from .engram.embedding import (
     AscendParallelEngramEmbedding,
     preflight_engram_checkpoint,
@@ -97,7 +97,7 @@ from .indexer import DeepseekV41Indexer
 
 def _engram_enabled_for_runtime(config, vllm_config) -> bool:
     """Use the current vLLM Engram opt-in for both runtime paths."""
-    return engram_enabled(config, vllm_config)
+    return engram_enabled(config) and vllm_config.engram_config is not None
 
 
 class DeepseekV41MLP(nn.Module):
@@ -733,6 +733,7 @@ class DeepseekV41Attention(DeepseekV41SWAAttention):
                 f"{prefix}.indexer",
                 role.compress_ratio,
                 quant_config=quant_config,
+                is_candidate_source=role.is_candidate_source,
             )
             if role.is_index_source
             else None
@@ -836,7 +837,7 @@ class DeepseekV41DecoderLayer(nn.Module):
         has_engram = _engram_enabled_for_runtime(config, vllm_config)
         self.engram: AscendEngram | None
         if has_engram and not is_draft_layer and self.layer_idx in config.engram_layer_ids:
-            self.engram = AscendEngram(config)
+            self.engram = AscendEngram(config, quant_config, f"{prefix}.engram")
         else:
             self.engram = None
 
@@ -1081,9 +1082,7 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         if self.has_engram:
             if rotation_path is not None and vllm_config.load_config.load_format != "dummy":
                 with torch.device("cpu"):
-                    with safe_open(rotation_path, framework="pt") as file:
-                        rotation = file.get_tensor("global_rotation")
-                    block = rotation[:32, :32].contiguous()
+                    block = load_engram_rotation_block(self.engram_root, config.hidden_size, rotation_path)
                 self.engram_rotation.copy_(block)
             # Upstream owns the n-gram history; the adapter only hands it the
             # Ascend SWA slot metadata (see engram/hash_state.py).
