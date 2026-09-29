@@ -446,9 +446,7 @@ class MultiGroupBlockTable:
         # Keep every group's slot mapping in one allocation. Besides reducing
         # allocator/object overhead, this lets A5 publish all cache-address
         # layouts with a two-dimensional Triton launch and no gather/copy.
-        slot_mapping_capacity = max_num_batched_tokens + max(
-            num_speculative_tokens - 1, 0
-        ) * max_num_reqs
+        slot_mapping_capacity = max_num_batched_tokens + max(num_speculative_tokens - 1, 0) * max_num_reqs
         self.slot_mapping = CpuGpuBuffer(
             len(block_sizes),
             slot_mapping_capacity,
@@ -456,10 +454,7 @@ class MultiGroupBlockTable:
             device=device,
             pin_memory=pin_memory,
         )
-        slot_mapping_rows = [
-            _CpuGpuBufferRow(self.slot_mapping, row)
-            for row in range(len(block_sizes))
-        ]
+        slot_mapping_rows = [_CpuGpuBufferRow(self.slot_mapping, row) for row in range(len(block_sizes))]
 
         # Use zip to pair block_sizes with kernel_sizes one-to-one
         if kv_cache_groups is not None:

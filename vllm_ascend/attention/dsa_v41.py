@@ -1060,9 +1060,7 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
                 num_actual_tokens,
             )
             if self._uses_a5_packed_cache and ori_sparse_indices is not None:
-                clamp_replay_swa_indices(
-                    positions, ori_sparse_indices, ori_topk_length, replay_visible_lens
-                )
+                clamp_replay_swa_indices(positions, ori_sparse_indices, ori_topk_length, replay_visible_lens)
             else:
                 ori_topk_length = replay_visible_lens
         ori_mask_mode = 0 if noncausal else 4
@@ -1158,11 +1156,7 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
                 build_smla_metadata,
             )
 
-        if (
-            self._build_query_metadata
-            and self._supports_device_ops
-            and cache_kind == "index_k"
-        ):
+        if self._build_query_metadata and self._supports_device_ops and cache_kind == "index_k":
             residual = cmp_residual_buffer
 
             if self._uses_a5_packed_cache:
@@ -1251,11 +1245,7 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
             skip_ring_update = bool(kwargs.get("skip_ring_state_update", False))
 
             def build_c2_metadata() -> None:
-                if (
-                    self._uses_a5_packed_cache
-                    and full_source_cos is not None
-                    and full_source_sin is not None
-                ):
+                if self._uses_a5_packed_cache and full_source_cos is not None and full_source_sin is not None:
                     build_c2_ring_metadata(
                         common.query_start_loc,
                         seq_lens,
@@ -1269,12 +1259,8 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
                         num_actual_tokens,
                         skip_update=skip_ring_update,
                         ring_metadata_output=ring_meta,
-                        complete_mask_output=self._c2_complete_mask[
-                            :num_input_tokens
-                        ],
-                        source_positions_output=self._c2_source_positions[
-                            :num_input_tokens
-                        ],
+                        complete_mask_output=self._c2_complete_mask[:num_input_tokens],
+                        source_positions_output=self._c2_source_positions[:num_input_tokens],
                         cos_output=self._c2_source_cos[:num_input_tokens],
                         sin_output=self._c2_source_sin[:num_input_tokens],
                     )

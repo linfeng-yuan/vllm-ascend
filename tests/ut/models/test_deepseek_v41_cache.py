@@ -255,9 +255,7 @@ def test_candidate_source_folded_index_cache_is_in_same_physical_slot(runtime):
     assert tuples[source_slot][:3] == (long_name, index_name, name)
     assert page_sizes[source_slot] >= sum(specs[layer].unpadded_page_size_bytes for layer in tuples[source_slot][:3])
     groups = make_cache_groups(group_cache_specs(specs))
-    planned = get_deepseek_v41_kv_cache_config(
-        runtime, groups, get_deepseek_v41_pool_bytes_per_block(groups) * 2
-    )
+    planned = get_deepseek_v41_kv_cache_config(runtime, groups, get_deepseek_v41_pool_bytes_per_block(groups) * 2)
     assert planned.kv_cache_tensors[source_slot].layers[:3] == [long_name, index_name, name]
     assert planned.kv_cache_tensors[source_slot].block_stride == page_sizes[source_slot]
 
@@ -1855,9 +1853,7 @@ def test_a5_replay_indices_bound_the_visible_window(visible):
     indices = torch.empty((1, 1, 4), dtype=torch.int32)
     lengths = torch.empty((1, 1), dtype=torch.int32)
 
-    dsa_v41.clamp_replay_swa_indices(
-        torch.tensor([10]), indices, lengths, torch.tensor([[visible]], dtype=torch.int32)
-    )
+    dsa_v41.clamp_replay_swa_indices(torch.tensor([10]), indices, lengths, torch.tensor([[visible]], dtype=torch.int32))
 
     expected = list(range(max(7, 11 - visible), 11))
     assert indices[0, 0].tolist() == expected + [-1] * (4 - len(expected))
