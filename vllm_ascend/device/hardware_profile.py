@@ -126,9 +126,6 @@ class HardwareCapability(Enum):
     # Route DeepSeek-V4 vision and hash rows through the fused
     # ``moe_gating_top_k_hash`` ABI with ``bias_vl`` and image sentinels.
     MOE_GATING_TOP_K_HASH_VISION = auto()
-    # A5 V4/V4.1 uses the installed custom_ops wheel's TopK ABI. Vision
-    # sentinels require an external mask and two calls on hash layers.
-    MOE_GATING_TOP_K_PACKAGED_A5 = auto()
     # Allow the extended NPU graph backend; static-kernel mode depends on this contract.
     MM_REDUCE_SCATTER_AI_CPU_INFERENCE = auto()
     NPUGRAPH_EX = auto()
@@ -359,7 +356,7 @@ _HARDWARE_PROFILES: Mapping[AscendDeviceType, HardwareProfile] = MappingProxyTyp
                     HardwareCapability.MOE_DISPATCH_EXTRA_ARGS,
                     HardwareCapability.MOE_DISPATCH_SHARED_EXPERT_ARGS,
                     HardwareCapability.MM_REDUCE_SCATTER_AI_CPU_INFERENCE,
-                    HardwareCapability.MOE_GATING_TOP_K_PACKAGED_A5,
+                    HardwareCapability.MOE_GATING_TOP_K_HASH_VISION,
                     HardwareCapability.NPUGRAPH_EX,
                     HardwareCapability.STANDARD_MAMBA_PATCH,
                     HardwareCapability.STANDARD_WORKER_PATCHES,
