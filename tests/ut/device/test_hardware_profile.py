@@ -96,6 +96,7 @@ _EXPECTED_CAPABILITIES = {
             HardwareCapability.MM_REDUCE_SCATTER_AI_CPU_INFERENCE,
             HardwareCapability.MOE_DISPATCH_EXTRA_ARGS,
             HardwareCapability.MOE_DISPATCH_SHARED_EXPERT_ARGS,
+            HardwareCapability.MOE_GATING_TOP_K_HASH_VISION,
             HardwareCapability.NPUGRAPH_EX,
             HardwareCapability.STANDARD_MAMBA_PATCH,
             HardwareCapability.STANDARD_WORKER_PATCHES,
