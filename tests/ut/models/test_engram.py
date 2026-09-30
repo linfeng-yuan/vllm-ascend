@@ -13,6 +13,7 @@ import pytest
 import torch
 from safetensors.torch import save_file
 
+from vllm_ascend.models.deepseek_v41.engram import elastic as elastic_mod
 from vllm_ascend.models.deepseek_v41.engram import embedding as embedding_mod
 from vllm_ascend.models.deepseek_v41.engram import npu
 from vllm_ascend.patch.platform.patch_engram_config import AscendEngramConfig
@@ -113,10 +114,103 @@ def test_loader_applies_mxfp8_checkpoint_scales(tmp_path):
     table.weight_scale_inv = torch.nn.Parameter(torch.empty((19, 2), dtype=torch.float32), requires_grad=False)
     table.load_checkpoint(tmp_path, key, chunk_rows=7)
     decoded = npu.dequantize_engram_rows(table.weight, table.weight_scale_inv)
-    expected = (
-        checkpoint_weight.float().unflatten(-1, (-1, 32)) * checkpoint_scale.float().unsqueeze(-1)
-    ).flatten(-2)
+    expected = (checkpoint_weight.float().unflatten(-1, (-1, 32)) * checkpoint_scale.float().unsqueeze(-1)).flatten(-2)
     torch.testing.assert_close(decoded.float(), expected, rtol=0, atol=0.02)
+
+
+def test_elastic_checkpoint_writes_native_fp8_and_masks_invalid_ids(tmp_path, monkeypatch):
+    key = "layers.1.engram.embed.weight"
+    scale_key = "layers.1.engram.embed.scale"
+    rows, dim = 7, 64
+    source = torch.arange(rows * dim).reshape(rows, dim).float().div(1024).to(torch.float8_e4m3fn)
+    scales = torch.ones((rows, dim // 32), dtype=torch.float32).to(torch.float8_e8m0fnu)
+    save_file({key: source, scale_key: scales}, tmp_path / "model.safetensors")
+    (tmp_path / "model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": {key: "model.safetensors", scale_key: "model.safetensors"}})
+    )
+    elastic_mod.preflight_elastic_checkpoint(tmp_path, [1], [rows], dim)
+    with pytest.raises(ValueError, match="expected"):
+        elastic_mod.preflight_elastic_checkpoint(tmp_path, [1], [rows + 1], dim)
+
+    class FakeBuffer:
+        def __init__(self, group, num_cpu_bytes):
+            self.destroyed = False
+            assert group == "node-hccl" and num_cpu_bytes == 1234
+
+        @staticmethod
+        def get_engram_storage_size_hint(entries, width, dtype):
+            assert (entries, width, dtype) == (4, dim, torch.float8_e4m3fn)
+            return 1234
+
+        def engram_write(self, weight, scale):
+            torch.testing.assert_close(weight[:4].view(torch.uint8), source[:4].view(torch.uint8))
+            torch.testing.assert_close(scale[:rows].view(torch.uint8), scales.view(torch.uint8))
+            assert scale[rows:].view(torch.uint8).eq(elastic_mod.E8M0_ONE_BITS).all()
+
+        def engram_fetch(self, indices):
+            self.indices = indices.clone()
+            return lambda: None
+
+        def destroy(self):
+            self.destroyed = True
+
+    monkeypatch.setattr(elastic_mod, "_elastic_buffer_cls", lambda: FakeBuffer)
+    table = object.__new__(elastic_mod.ElasticEngramEmbedding)
+    torch.nn.Module.__init__(table)
+    table.rows, table.dim, table.shard_rows = rows, dim, 4
+    table.padded_rows, table.start, table.end = 8, 0, 4
+    table.group = SimpleNamespace(device_group="node-hccl", is_source=True)
+    table.weight = torch.nn.Parameter(torch.empty(0, dtype=torch.float8_e4m3fn), requires_grad=False)
+    table.weight_scale_inv = torch.nn.Parameter(torch.empty((8, 2), dtype=torch.float8_e8m0fnu), requires_grad=False)
+    table.weight_scale_inv.data.view(torch.uint8).fill_(elastic_mod.E8M0_ONE_BITS)
+    table.elastic_buffer = None
+    table.load_checkpoint(tmp_path, key, chunk_rows=2)
+    _, valid, _ = table.begin_lookup(torch.tensor([[0, -1], [rows, rows - 1]], dtype=torch.int32))
+    assert valid.tolist() == [[True, False], [False, True]]
+    assert table.elastic_buffer.indices.tolist() == [0, 0, 0, rows - 1]
+    buffer = table.elastic_buffer
+    table.destroy()
+    assert buffer.destroyed and table.elastic_buffer is None
+
+
+def test_a5_elastic_accepts_four_node_dp32(monkeypatch):
+    from vllm_ascend.device import hardware_profile
+
+    profile = SimpleNamespace(device_adaptor_family=hardware_profile.DeviceAdaptorFamily.FP8_OPTIMIZED)
+    monkeypatch.setattr(hardware_profile, "get_current_hardware_profile", lambda: profile)
+    config = AscendEngramConfig(cpu_offload=True)
+    config.verify_parallel_config(_topology(tp=1, dp=32, nnodes=4, data_parallel_size_local=8))
+    with pytest.raises(ValueError, match="A5 ElasticBuffer"):
+        config.verify_parallel_config(_topology(tp=1, dp=32, nnodes=4, data_parallel_size_local=16))
+
+
+def test_elastic_group_shards_dp32_within_each_eight_rank_node(monkeypatch):
+    ep = SimpleNamespace(world_size=32, ranks=list(range(32)), cpu_group="ep-cpu", device_group="ep-hccl")
+    tp = SimpleNamespace(device_group="tp-hccl", ranks=[10])
+    monkeypatch.setattr(elastic_mod, "get_ep_group", lambda: ep)
+    monkeypatch.setattr(elastic_mod, "get_tp_group", lambda: tp)
+
+    def gather(hosts, hostname, group):
+        hosts[:] = [f"host-{rank // 8}" for rank in range(32)]
+
+    groups = []
+
+    def new_group(ranks, backend):
+        result = SimpleNamespace(ranks=ranks, backend=backend)
+        groups.append(result)
+        return result
+
+    monkeypatch.setattr(elastic_mod.dist, "all_gather_object", gather)
+    monkeypatch.setattr(elastic_mod.dist, "new_group", new_group)
+    monkeypatch.setattr(elastic_mod.dist, "get_backend", lambda group: "hccl")
+    monkeypatch.setattr(elastic_mod.dist, "get_rank", lambda group=None: 10 if group is None else group.ranks.index(10))
+    monkeypatch.setattr(elastic_mod.dist, "get_world_size", lambda group: len(group.ranks))
+    selected = elastic_mod.EngramElasticGroup.from_vllm(8)
+    assert selected.rank == 2 and selected.size == 8
+    assert selected.device_group.ranks == list(range(8, 16))
+    assert len(groups) == 8  # Gloo and HCCL for each of four nodes.
+    with pytest.raises(ValueError, match="8 EP ranks"):
+        elastic_mod.EngramElasticGroup.from_vllm(16)
 
 
 def _fake_host_library(device_offset):

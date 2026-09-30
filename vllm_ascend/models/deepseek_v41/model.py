@@ -55,7 +55,7 @@ from vllm_ascend.attention.dsa_v41 import (
     DeepseekV41CacheLayer,
 )
 from vllm_ascend.device.device_op import DeviceOperator
-from vllm_ascend.device.hardware_profile import HardwareCapability, get_current_hardware_profile
+from vllm_ascend.device.hardware_profile import DeviceAdaptorFamily, HardwareCapability, get_current_hardware_profile
 from vllm_ascend.models.common.ops.sequence_parallel import (
     sp_all_gather,
     sp_padding_mask,
@@ -83,6 +83,7 @@ from .engram import (
     engram_enabled,
 )
 from .engram.common import load_engram_rotation_block
+from .engram.elastic import ElasticEngramEmbedding, EngramElasticGroup, preflight_elastic_checkpoint
 from .engram.embedding import (
     AscendParallelEngramEmbedding,
     preflight_engram_checkpoint,
@@ -1018,32 +1019,47 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         self.engram_root = vllm_config.model_config.model
         config = self.config
         self.engram_weight_root = self.engram_root
-        # The table is INT8 with group-32 scales; whether it lives in host
-        # memory is vLLM's EngramConfig choice.
         cpu_offload = engram_cpu_offload(vllm_config)
+        self.engram_elastic = (
+            cpu_offload and get_current_hardware_profile().device_adaptor_family is DeviceAdaptorFamily.FP8_OPTIMIZED
+        )
         self.engram_dp_shared_memory = bool(vllm_config.engram_config and vllm_config.engram_config.dp_shared_memory)
+        if self.engram_elastic and self.engram_dp_shared_memory:
+            raise ValueError("A5 ElasticBuffer Engram cannot use dp_shared_memory")
+        if self.engram_elastic and get_ep_group().world_size != vllm_config.parallel_config.data_parallel_size:
+            raise ValueError("A5 ElasticBuffer Engram requires EP size to match DP size")
         self.engram_layout = EngramLayout.from_config(config) if self.has_engram else None
         if self.engram_layout is not None:
-            # Complete head buckets per rank, laid out over TP and the
-            # node-local EDP group (upstream's, not one built from EP hosts).
-            # Fail on an unreadable checkpoint before the first table exists:
-            # the allocation below is per-rank 24-51 GiB, and discovering a
-            # missing index/key during weight iteration would mean paying for
-            # it first.  `dummy` reads no checkpoint at all.
             if vllm_config.load_config.load_format != "dummy":
-                preflight_engram_checkpoint(
-                    self.engram_weight_root, config.engram_layer_ids, AscendParallelEngramEmbedding
-                )
+                if self.engram_elastic:
+                    preflight_elastic_checkpoint(
+                        self.engram_weight_root,
+                        config.engram_layer_ids,
+                        config.engram_num_embeddings,
+                        config.engram_head_dim,
+                    )
+                else:
+                    preflight_engram_checkpoint(
+                        self.engram_weight_root, config.engram_layer_ids, AscendParallelEngramEmbedding
+                    )
             for slot, (layer_id, rows) in enumerate(zip(config.engram_layer_ids, config.engram_num_embeddings)):
                 head_sizes = tuple(size for order in self.engram_layout.primes[slot] for size in order)
-                embed = AscendParallelEngramEmbedding(
-                    rows,
-                    config.engram_head_dim,
-                    head_sizes,
-                    slot,
-                    cpu_offload=cpu_offload,
-                    dp_shared_memory=self.engram_dp_shared_memory,
-                )
+                if self.engram_elastic:
+                    embed = ElasticEngramEmbedding(
+                        rows,
+                        config.engram_head_dim,
+                        head_sizes,
+                        EngramElasticGroup.from_vllm(vllm_config.parallel_config.data_parallel_size_local),
+                    )
+                else:
+                    embed = AscendParallelEngramEmbedding(
+                        rows,
+                        config.engram_head_dim,
+                        head_sizes,
+                        slot,
+                        cpu_offload=cpu_offload,
+                        dp_shared_memory=self.engram_dp_shared_memory,
+                    )
                 embed.bind_checkpoint(self.engram_weight_root, f"layers.{layer_id}.engram.embed.weight")
                 self.layers[layer_id].engram.embed_tokens = embed
         self.engram_hash = None
@@ -1116,8 +1132,10 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         # still has to reach it: it participates with no valid rows and no
         # history update (upstream's dummy_hashes branch). Sharing has no
         # per-step collectives, so it opts out.
-        participates = hashing or (
-            self.engram_hash is not None and not self.engram_dp_shared_memory and get_engram_dp_size() > 1
+        participates = (
+            hashing
+            or self.engram_elastic
+            or (self.engram_hash is not None and not self.engram_dp_shared_memory and get_engram_dp_size() > 1)
         )
         hashes = None
         mask = torch.empty(0, dtype=torch.bool, device=device)
@@ -1147,10 +1165,17 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         tables = [self.layers[layer_id].engram.embed_tokens for layer_id in config.engram_layer_ids]
         if participates:
             assert hashes is not None
-            # One DP gather feeds every layer sharing the split table.
-            gathered = gather_engram_hashes(hashes, dp_shared_memory=self.engram_dp_shared_memory)
-            for slot, (layer_id, table) in enumerate(zip(config.engram_layer_ids, tables)):
-                lookups[layer_id] = table.embed_gathered(gathered[:, slot], hashes.shape[0]).flatten(1)
+            if self.engram_elastic:
+                # Independent table HCCL contexts permit both RDMA transfers
+                # to start before either completion callback is waited on.
+                pending = [table.begin_lookup(hashes[:, slot]) for slot, table in enumerate(tables)]
+                for layer_id, table, request in zip(config.engram_layer_ids, tables, pending):
+                    lookups[layer_id] = table.finish_lookup(request).flatten(1)
+            else:
+                # One DP gather feeds every layer sharing the split table.
+                gathered = gather_engram_hashes(hashes, dp_shared_memory=self.engram_dp_shared_memory)
+                for slot, (layer_id, table) in enumerate(zip(config.engram_layer_ids, tables)):
+                    lookups[layer_id] = table.embed_gathered(gathered[:, slot], hashes.shape[0]).flatten(1)
         else:
             for layer_id, table in zip(config.engram_layer_ids, tables):
                 lookups[layer_id] = torch.empty(

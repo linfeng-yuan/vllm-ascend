@@ -381,6 +381,27 @@ requests, and mixed-length concurrent request smoke tests. These checks do
 not establish dataset accuracy or performance. Other Engram storage formats
 and model runner V2 are not covered by this smoke validation.
 
+### 5.4 A5 ElasticBuffer Engram (FP8 checkpoint)
+
+On A5, `--engram-config '{"cpu_offload": true}'` selects ElasticBuffer for
+the Engram tables. The indexed checkpoint must contain native FP8 E4M3
+`layers.*.engram.embed.weight` tensors and E8M0 `.scale` tensors. The loader
+streams only this rank's FP8 rows to host storage and loads the full scale
+table to device memory, as required by the current ElasticBuffer inference
+interface. `dp_shared_memory` is unsupported in this mode.
+
+The supported layout is TP1, internal DP up to 32, EP matching DP, up to four
+nodes with equal local DP. For DP32/EP32 over four eight-card nodes, each card
+owns **1/8 of each table's FP8 rows**. Each node stores a complete FP8 table;
+the device E8M0 scale table is replicated on every card. ElasticBuffer fetch
+is limited to the eight-card node group and does not shard one table across
+all 32 cards. Different Engram tables use different HCCL groups. The two
+table fetches are launched before either completion is waited on.
+
+This A5 path has not yet been validated on NPU hosts for the 0.30.0 adapter.
+Run a model-load, short request, idle-DP, and multi-node request smoke test
+before interpreting throughput results.
+
 ## 6 Functional Verification
 
 ### 6.1 Text Request

@@ -62,22 +62,44 @@ if importlib.util.find_spec("vllm.config.engram") is not None:
                 raise ValueError("dp_shared_memory requires data_parallel_size > 1")
             tp = parallel_config.tensor_parallel_size
             dp = parallel_config.data_parallel_size
+            from vllm_ascend.device.hardware_profile import DeviceAdaptorFamily, get_current_hardware_profile
+
+            a5_elastic = (
+                self.cpu_offload
+                and not self.dp_shared_memory
+                and get_current_hardware_profile().device_adaptor_family is DeviceAdaptorFamily.FP8_OPTIMIZED
+            )
+            if a5_elastic:
+                # One process group per physical node serves its local EP
+                # ranks. DP32/EP32 on four eight-card nodes therefore stores
+                # 1/8 of each FP8 table per card, repeated on every node.
+                topology_ok = (
+                    tp == 1
+                    and dp <= 32
+                    and parallel_config.nnodes <= 4
+                    and not parallel_config.data_parallel_external_lb
+                    and parallel_config.data_parallel_size_local == dp // parallel_config.nnodes
+                    and dp % parallel_config.nnodes == 0
+                )
+            else:
+                topology_ok = (
+                    tp in (1, 2, 4, 8)
+                    and tp * dp <= 16
+                    and parallel_config.nnodes == 1
+                    and (parallel_config.data_parallel_external_lb or parallel_config.data_parallel_size_local == dp)
+                )
             if (
                 parallel_config.enable_elastic_ep
-                or tp not in (1, 2, 4, 8)
                 or dp < 1
-                or tp * dp > 16
                 or parallel_config.pipeline_parallel_size != 1
                 or parallel_config.prefill_context_parallel_size != 1
                 or parallel_config.decode_context_parallel_size != 1
-                or parallel_config.nnodes != 1
-                # External DP launches one engine per process, even on one node.
-                # Check physical co-location after the DP group is initialized.
-                or (not parallel_config.data_parallel_external_lb and parallel_config.data_parallel_size_local != dp)
+                or not topology_ok
             ):
                 raise ValueError(
-                    "Ascend Engram requires single-node TP=1/2/4/8 with at most 16 ranks, "
-                    "with all DP replicas local and PP=PCP=DCP=1."
+                    "Ascend Engram needs PP=PCP=DCP=1; A5 ElasticBuffer supports "
+                    "TP1, internal DP<=32 over up to four nodes with equal local DP, "
+                    "while other storage modes require a single node and at most 16 TP x DP ranks."
                 )
 
         def verify_load_config(self, load_config) -> None:
