@@ -1073,8 +1073,10 @@ def test_ring_source_reuses_prepared_store_coordinates(monkeypatch, num_tokens, 
         compressor=SimpleNamespace(cache=cache, state=state),
         indexer=SimpleNamespace(cache=cache),
     )
+    impl = object.__new__(AscendDSAV41Impl)
+    impl.role = SimpleNamespace(compress_ratio=2)
     AscendDSAV41Impl._write_compressed_source(
-        SimpleNamespace(role=SimpleNamespace(compress_ratio=2)),
+        impl,
         attn,
         hidden_states,
         positions,
@@ -1490,10 +1492,10 @@ def test_v41_query_preparation_honors_multistream_setting(overlap):
     assert impl._prepare_queries(attn, "hidden", "positions", "cos", "sin", metadata) == ("q", "qr")
     selected = impl.multistream_preprocess if overlap else impl.preprocess
     selected.assert_called_once_with(attn, "hidden", "cos", "sin", metadata.swa)
-    impl._write_compressed_source.assert_called_once_with(attn, "hidden", "positions", "cos", "sin", metadata)
+    impl._write_compressed_source.assert_not_called()
 
 
-def test_v41_a5_prefill_keeps_cache_writes_on_current_stream():
+def test_v41_a5_prefill_selects_multistream_preparation():
     from unittest.mock import Mock
 
     from vllm_ascend.attention.dsa_v41 import AscendDSAV41Impl
@@ -1509,8 +1511,8 @@ def test_v41_a5_prefill_keeps_cache_writes_on_current_stream():
     metadata = SimpleNamespace(swa=SimpleNamespace(num_actual_tokens=6, num_prefills=1))
 
     assert impl._prepare_queries(attn, "hidden", "positions", "cos", "sin", metadata) == ("q", "qr")
-    impl.preprocess.assert_called_once_with(attn, "hidden", "cos", "sin", metadata.swa)
-    impl.multistream_preprocess.assert_not_called()
+    impl.multistream_preprocess.assert_called_once_with(attn, "hidden", "cos", "sin", metadata.swa)
+    impl.preprocess.assert_not_called()
 
 
 @pytest.mark.parametrize("overlap", [False, True])
@@ -1595,7 +1597,7 @@ def test_dspark_v41_noncausal_metadata_preserves_full_visible_block(runtime, mon
     full = builder.build_for_drafting(common, 1)
     torch.testing.assert_close(
         native.call_args.kwargs["ori_topk_length"],
-        (full.ori_sparse_indices >= 0).sum(-1, dtype=torch.int32),
+        (full.ori_sparse_indices >= 0).sum((-1, -2), dtype=torch.int32),
     )
     assert full.ori_topk_length is native.call_args.kwargs["ori_topk_length"]
     assert full.ori_mask_mode == 0
@@ -1606,7 +1608,7 @@ def test_dspark_v41_noncausal_metadata_preserves_full_visible_block(runtime, mon
     assert full.ori_sparse_indices[0, 0, : len(expected)].tolist() == expected
     assert torch.all(full.ori_sparse_indices[0, 0, len(expected) :] == -1)
     assert full.ori_sparse_indices[3, 0, :5].tolist() == list(range(5))
-    assert full.ori_topk_length[:, 0].tolist() == [len(expected)] * 3 + [5]
+    assert full.ori_topk_length.tolist() == [len(expected)] * 3 + [5]
     if rank is None:
         return
     monkeypatch.setattr(
