@@ -47,7 +47,6 @@ from vllm.model_executor.models.utils import PPMissingLayer, is_pp_missing_param
 
 # Upstream #56741 normalized the V4.1 model package name.
 from vllm.models.deepseek_v41.common.engram import EngramLayout
-from vllm.models.deepseek_v41.nvidia.engram import gather_engram_hashes
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.utils.torch_utils import kv_cache_dtype_str_to_dtype
@@ -91,7 +90,7 @@ from .engram.embedding import (
     preflight_engram_checkpoint,
 )
 from .engram.layer import AscendEngram
-from .engram.parallel import resolve_dp_shared_memory
+from .engram.parallel import gather_engram_hashes, resolve_dp_shared_memory
 from .indexer import DeepseekV41Indexer
 
 
