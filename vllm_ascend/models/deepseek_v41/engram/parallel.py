@@ -3,8 +3,7 @@
 """Uniform Engram DP exchange, backported from vLLM f84b0c4bce.
 
 For single-node PP=PCP=DCP=1, the existing DP group has exactly the
-membership of upstream's node-local Engram DP group. Reuse it without
-creating another communicator or modifying vLLM parallel state.
+membership of upstream's node-local Engram DP group.
 """
 
 import torch
@@ -117,8 +116,8 @@ def _engram_select_rows(
 ) -> None:
     """Copy one token window out of a rank-major gathered buffer.
 
-    Both gathers land rank-major ([rank][token][local width]); this walks the
-    window the rank keeps and lays its ranks out side by side as width.
+    The DP gather lands rank-major ([rank][token][local width]); lay the
+    selected token window out with ranks side by side as head width.
     """
     if output.numel() == 0:
         return

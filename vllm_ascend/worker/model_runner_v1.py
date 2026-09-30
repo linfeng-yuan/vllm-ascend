@@ -393,6 +393,8 @@ class NPUModelRunner(GPUModelRunner):
         with _torch_cuda_wrapper():
             super().__init__(vllm_config, device)
         self.lookback_token_ids: CpuGpuBuffer | None = None
+        self._engram_overlap_stream: torch.npu.Stream | None = None
+        self._engram_capture_active = False
 
         self.device_metadata_executor: DeviceMetadataExecutor | None = None
         self.device_metadata_providers: dict[int, DeviceMetadataTaskProvider] | None = None
@@ -3319,14 +3321,70 @@ class NPUModelRunner(GPUModelRunner):
             **model_kwargs,
         }
         # Routing runs before replay on every DP, never inside capture.
-        prepare_engram = getattr(self.model, "prepare_engram_inputs", None)
-        if prepare_engram is not None:
-            if (
-                getattr(self, "_engram_capture_active", False)
-                or getattr(forward_context, "capturing", False)
-                or torch.npu.is_current_stream_capturing()
-            ):
-                model_inputs.update(self.model.prepare_engram_graph_inputs(num_tokens_padded))
+        engram_overlap_stream = None
+        if self.vllm_config.engram_config is not None:
+            overlap_enabled = (
+                get_ascend_config().multistream_engram_overlap
+                and forward_context.cudagraph_runtime_mode in (CUDAGraphMode.NONE, CUDAGraphMode.FULL)
+            )
+            full_graph_overlap = overlap_enabled and forward_context.cudagraph_runtime_mode == CUDAGraphMode.FULL
+            if self._engram_capture_active:
+                if full_graph_overlap:
+                    model_inputs.update(
+                        self.model.prepare_engram_overlap_graph_inputs(
+                            forward_context.batch_descriptor, prime=True
+                        )
+                    )
+                else:
+                    model_inputs.update(self.model.prepare_engram_graph_inputs())
+            elif overlap_enabled:
+                # Hash/row fetch do not read hidden states. Submit Engram
+                # exchanges through the existing DP/TP groups on this stream.
+                # Main waits for completed rows at each table's consumer.
+                main_stream = torch.npu.current_stream()
+                # Allocate fixed buffers before switching streams. External
+                # events bind the graph's wait/reset tasks to this producer;
+                # ordinary eager events must not be captured as graph inputs.
+                graph_inputs = (
+                    self.model.prepare_engram_overlap_graph_inputs(
+                        forward_context.batch_descriptor
+                    )
+                    if full_graph_overlap
+                    else None
+                )
+                engram_overlap_stream = self._engram_overlap_stream
+                if engram_overlap_stream is None:
+                    engram_overlap_stream = torch.npu.Stream(device=input_ids.device)
+                    self._engram_overlap_stream = engram_overlap_stream
+                engram_overlap_stream.wait_stream(main_stream)
+                device_inputs = self._get_engram_device_inputs()
+                lookback = model_kwargs.get("lookback_token_ids")
+                # Metadata views can otherwise be returned to the allocator
+                # while their asynchronous reads are still in flight.
+                for tensor in (input_ids, positions, lookback, *device_inputs.values()):
+                    if isinstance(tensor, torch.Tensor) and tensor.device.type == "npu":
+                        tensor.record_stream(engram_overlap_stream)
+                try:
+                    with torch.npu.stream(engram_overlap_stream):
+                        model_inputs.update(
+                            self.model.prepare_engram_overlap_inputs(
+                                input_ids,
+                                positions,
+                                lookback,
+                                **device_inputs,
+                                graph_inputs=graph_inputs,
+                                padded_tokens=num_tokens_padded,
+                            )
+                        )
+                    # Eager results are allocated on the producer stream and
+                    # consumed on main. Retain them until those reads finish,
+                    # even if an exception drops the Python input dictionary.
+                    for tensor in model_inputs["engram_lookups"].values():
+                        tensor.record_stream(main_stream)
+                    model_inputs["engram_mask"].record_stream(main_stream)
+                except Exception:
+                    main_stream.wait_stream(engram_overlap_stream)
+                    raise
             else:
                 # The window is upstream's: ``_preprocess`` already ran
                 # ``_init_model_kwargs`` -> ``_prepare_lookback_token_ids`` on
@@ -3337,7 +3395,7 @@ class NPUModelRunner(GPUModelRunner):
                 # state fills itself, which is what keeps async draft
                 # placeholders out of the history.
                 model_inputs.update(
-                    prepare_engram(
+                    self.model.prepare_engram_inputs(
                         input_ids,
                         positions,
                         num_tokens_padded,
@@ -3356,6 +3414,10 @@ class NPUModelRunner(GPUModelRunner):
                 hidden_states = run_model()
                 self._update_full_graph_params_if_needed(forward_context, num_tokens_padded)
         finally:
+            if engram_overlap_stream is not None:
+                # Also retire work when model.forward raises before it reaches
+                # one of the per-layer events.
+                torch.npu.current_stream().wait_stream(engram_overlap_stream)
             # A forward that raises must still retire the device-metadata
             # submission: otherwise the next submit() refuses to start and a
             # single request error wedges every DP rank of the instance.

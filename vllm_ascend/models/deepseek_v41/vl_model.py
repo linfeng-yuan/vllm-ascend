@@ -208,8 +208,8 @@ class AscendDeepseekV41ForCausalLM(
             is_multimodal=is_multimodal,
         )
 
-    def prepare_engram_graph_inputs(self, padded_tokens=None):
-        return self.language_model.prepare_engram_graph_inputs(padded_tokens)
+    def prepare_engram_graph_inputs(self):
+        return self.language_model.prepare_engram_graph_inputs()
 
     def prepare_engram_inputs(
         self,
@@ -229,6 +229,32 @@ class AscendDeepseekV41ForCausalLM(
             query_start_loc,
             slot_mapping,
             block_table,
+        )
+
+    def prepare_engram_overlap_graph_inputs(self, batch_descriptor, *, prime=False):
+        return self.language_model.prepare_engram_overlap_graph_inputs(batch_descriptor, prime=prime)
+
+    def prepare_engram_overlap_inputs(
+        self,
+        input_ids,
+        positions,
+        lookback_token_ids=None,
+        query_start_loc=None,
+        slot_mapping=None,
+        block_table=None,
+        *,
+        graph_inputs=None,
+        padded_tokens=None,
+    ):
+        return self.language_model.prepare_engram_overlap_inputs(
+            input_ids,
+            positions,
+            lookback_token_ids,
+            query_start_loc,
+            slot_mapping,
+            block_table,
+            graph_inputs=graph_inputs,
+            padded_tokens=padded_tokens,
         )
 
     @property

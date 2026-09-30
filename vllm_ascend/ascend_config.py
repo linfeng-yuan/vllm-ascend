@@ -342,6 +342,7 @@ class AscendConfig:
             "refresh": false,
             "enable_cpu_binding": true,
             "multistream_dsv4_dsa_overlap": true,
+            "multistream_engram_overlap": true,
             "enable_prefill_mc2": false,
             "multistream_overlap_shared_expert": false,
             "enable_kv_nz": false,
@@ -483,6 +484,9 @@ class AscendConfig:
     # ---- user-input switches: bool/int/list/str, auto type validation ----
     enable_cpu_binding: bool = True
     multistream_dsv4_dsa_overlap: bool = True
+    # Engram hash/lookup and DP/TP communication on an auxiliary stream,
+    # using the existing communication groups in eager execution and FULL graphs.
+    multistream_engram_overlap: bool = True
     enable_prefill_mc2: bool = False
     multistream_overlap_shared_expert: bool = False
     enable_kv_nz: bool = False
