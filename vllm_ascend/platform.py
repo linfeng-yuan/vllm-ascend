@@ -1610,8 +1610,6 @@ def _validate_routing_replay_config(vllm_config: VllmConfig) -> None:
             "routed-experts capture (--enable-return-routed-experts) is only supported by the "
             "V2 model runner; set VLLM_USE_V2_MODEL_RUNNER=1 or drop the flag."
         )
-
-
 def _validate_parallel_config(vllm_config: VllmConfig) -> None:
     parallel_config = vllm_config.parallel_config
     if not vllm_config.use_v2_model_runner and parallel_config.prefill_context_parallel_size > 1:
