@@ -5,9 +5,7 @@ import pytest
 import torch
 import torch_npu  # noqa: F401
 
-from vllm_ascend.ops.dsv41_a5.quantization import (
-    _mxfp4_quantize_e8m0_reference,
-)
+from tests.e2e.nightly.single_node.ops.singlecard_ops.dsv41_reference import quantize_indexer
 from vllm_ascend.ops.triton.quantize_mxfp4_indexer import (
     write_mxfp4_indexer_cache,
 )
@@ -37,7 +35,7 @@ def test_write_mxfp4_indexer_cache_matches_reference(tokens):
         slots[:valid, 1] = torch.arange(valid, device="npu") % 32
     data, scale = make_caches()
     write_mxfp4_indexer_cache(values, slots, data, scale)
-    expected_data, expected_scale = _mxfp4_quantize_e8m0_reference(values[:valid])
+    expected_data, expected_scale = quantize_indexer(values[:valid].cpu())
     if valid:
         actual_data = data[slots[:valid, 0].long(), slots[:valid, 1].long(), 0]
         actual_scale = scale[slots[:valid, 0].long(), slots[:valid, 1].long(), 0]
@@ -61,7 +59,7 @@ def test_write_mxfp4_indexer_cache_graph_replay():
     with torch.npu.graph(graph, capture_error_mode="thread_local", auto_dispatch_capture=True):
         write_mxfp4_indexer_cache(values, slots, data, scale)
     values.mul_(0.125)
-    expected_data, expected_scale = _mxfp4_quantize_e8m0_reference(values[:5])
+    expected_data, expected_scale = quantize_indexer(values[:5].cpu())
     graph.replay()
     torch.npu.synchronize()
     actual_data = data[slots[:5, 0].long(), slots[:5, 1].long(), 0]
@@ -98,7 +96,7 @@ def test_write_mxfp4_indexer_cache_crosses_int32_byte_offset_boundary():
     write_mxfp4_indexer_cache(values, slots, data, scale)
     torch.npu.synchronize()
 
-    expected_data, expected_scale = _mxfp4_quantize_e8m0_reference(values)
+    expected_data, expected_scale = quantize_indexer(values.cpu())
     actual_data = data[slots[:, 0].long(), slots[:, 1].long(), 0]
     actual_scale = scale[slots[:, 0].long(), slots[:, 1].long(), 0]
     torch.testing.assert_close(actual_data.cpu(), expected_data.cpu(), rtol=0, atol=0)
