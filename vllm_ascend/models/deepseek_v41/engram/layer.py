@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Engram projection and gate for the rotated Ascend checkpoint."""
+"""Engram projection and gate for BF16 and rotated Ascend checkpoints."""
 
 import torch
 from torch import nn
 from vllm.model_executor.layers.linear import ReplicatedLinear
 
+from vllm_ascend.utils import is_950
+
 from .common import engram_gate
+from .gate import fused_engram_gate
 
 
 class AscendEngram(nn.Module):
-    """Consume rows prepared by the v1 runner using the existing rotated-checkpoint gate."""
+    """Consume rows prepared by the v1 runner in the checkpoint residual basis."""
 
     def __init__(self, config, quant_config, prefix: str) -> None:
         super().__init__()
@@ -33,9 +36,11 @@ class AscendEngram(nn.Module):
         hidden_states: torch.Tensor,
         rows: torch.Tensor,
         token_mask: torch.Tensor,
-        rotation: torch.Tensor,
+        rotation: torch.Tensor | None,
     ) -> torch.Tensor:
         kv = self.wkv(rows)
+        if rotation is None and hidden_states.device.type == "npu" and is_950():
+            return fused_engram_gate(hidden_states, kv, self.q_weight, self.k_weight, token_mask, self.eps)
         key, value = kv.split([self.hc_mult * self.dim, self.dim], -1)
         return engram_gate(
             hidden_states,

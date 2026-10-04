@@ -26,6 +26,7 @@ def runtime(monkeypatch):
     monkeypatch.setattr(parallel, "get_forward_context", lambda: context)
     monkeypatch.setattr(parallel, "get_potential_max_tokens", lambda: 96)
     monkeypatch.setattr(parallel, "get_dp_group", lambda: group)
+    monkeypatch.setattr(parallel, "get_engram_dp_group", lambda: group)
     return config, ascend, context
 
 
