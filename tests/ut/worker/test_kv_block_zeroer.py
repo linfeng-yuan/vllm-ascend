@@ -60,6 +60,27 @@ def test_physical_block_tensors_support_mixed_pages_and_deduplicate():
     assert (max_chunks, block_size, n_segs) == (2, 8, 2)
 
 
+@pytest.mark.parametrize("num_blocks", [None, 0, -1])
+def test_physical_block_tensors_require_positive_block_count(num_blocks):
+    zeroer = AscendKVBlockZeroer(torch.device("cpu"), pin_memory=False)
+    with pytest.raises(ValueError, match="num_blocks must be positive"):
+        zeroer.init_meta([], [], "auto", set(), {}, physical_block_tensors=[], num_blocks=num_blocks)
+
+
+@pytest.mark.parametrize(
+    "tensor,blocks,error",
+    [
+        (torch.empty(8, 8).t(), 4, "contiguous whole blocks"),
+        (torch.empty(15, dtype=torch.int8), 4, "contiguous whole blocks"),
+        (torch.empty(12, dtype=torch.int8), 4, "4-byte aligned"),
+    ],
+)
+def test_physical_block_tensors_reject_invalid_storage(tensor, blocks, error):
+    zeroer = AscendKVBlockZeroer(torch.device("cpu"), pin_memory=False)
+    with pytest.raises(ValueError, match=error):
+        zeroer.init_meta([], [], "auto", set(), {}, physical_block_tensors=[tensor], num_blocks=blocks)
+
+
 def test_init_meta_supports_non_uniform_page_sizes() -> None:
     """MLA K/V cache segments may have different sizes per logical block."""
     device = torch.device("cpu")

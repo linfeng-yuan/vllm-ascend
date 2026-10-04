@@ -14,9 +14,7 @@ import torch
 from safetensors import safe_open
 
 
-def load_engram_rotation_block(
-    model_root: str, hidden_size: int, rotation_path: Path | None = None
-) -> torch.Tensor:
+def load_engram_rotation_block(model_root: str, hidden_size: int, rotation_path: Path | None = None) -> torch.Tensor:
     """Use the A3 Quarot basis, or the native A5 identity basis."""
     rotation_path = rotation_path or Path(model_root) / "optional/quarot.safetensors"
     if not rotation_path.is_file():
