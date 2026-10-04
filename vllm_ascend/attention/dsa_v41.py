@@ -763,6 +763,9 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
         self._slot_mapping_2d = torch.full((max_tokens, 2), -1, dtype=torch.int32, device=device)
         self._flat_slot_mapping = torch.full((max_tokens,), -1, dtype=torch.int64, device=device)
         self._seq_lens = torch.zeros(max_reqs, dtype=torch.int32, device=device)
+        self._max_tokens = max_tokens
+        self._dspark_swa_indices = None
+        self._dspark_swa_lengths = None
         self._cache_seq_lens = torch.zeros(max_reqs, dtype=torch.int32, device=device)
         self._cmp_residual = torch.zeros(max_reqs, dtype=torch.int32, device=device)
         self._smla_metadata = torch.zeros(query_metadata_size, dtype=torch.int32, device=device)
@@ -1060,6 +1063,19 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
                 num_actual_tokens,
                 use_logical_indices=True,
             )
+            # Full draft graphs retain these addresses from capture. Rebuild
+            # the values in persistent buffers rather than returning temporary
+            # tensors whose capture-time contents never advance with decoding.
+            if self._dspark_swa_indices is None:
+                self._dspark_swa_indices = ori_sparse_indices.new_empty(
+                    (self._max_tokens, *ori_sparse_indices.shape[1:])
+                )
+                self._dspark_swa_lengths = ori_topk_length.new_empty((self._max_tokens, *ori_topk_length.shape[1:]))
+            indices_view = self._dspark_swa_indices[:num_actual_tokens]
+            lengths_view = self._dspark_swa_lengths[:num_actual_tokens]
+            indices_view.copy_(ori_sparse_indices)
+            lengths_view.copy_(ori_topk_length)
+            ori_sparse_indices, ori_topk_length = indices_view, lengths_view
         if (
             not noncausal
             and ori_sparse_indices is None

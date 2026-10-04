@@ -229,6 +229,40 @@ def test_candidate_source_folded_index_cache_is_in_same_physical_slot(runtime):
     assert planned.kv_cache_tensors[source_slot].block_stride == page_sizes[source_slot]
 
 
+@pytest.mark.parametrize("block_size", [32, 64, 128])
+def test_mrv2_folded_indexer_view_does_not_alias_long_kv(runtime, monkeypatch, block_size):
+    from vllm_ascend.worker.v2 import attn_utils
+
+    runtime.cache_config.block_size = block_size
+    specs = collect_specs(runtime)
+    folded = "model.layers.20.self_attn.indexer.k_cache_folded"
+    index = folded.removesuffix("_folded")
+    long_kv = folded.removesuffix(".indexer.k_cache_folded") + ".long_kv_cache"
+    specs[folded] = make_folded_index_cache_spec(block_size=runtime.cache_config.block_size)
+    groups = make_cache_groups(group_cache_specs(specs))
+    planned = get_deepseek_v41_kv_cache_config(runtime, groups, get_deepseek_v41_pool_bytes_per_block(groups) * 2)
+    layer_specs = attn_utils._get_layer_kv_cache_specs(planned)
+    allocation = next(d for d in planned.kv_cache_tensors if folded in d.layers)
+    backing = torch.zeros(allocation.size, dtype=torch.int8)
+    backend = SimpleNamespace(get_kv_cache_shape=lambda *shape: shape)
+    names = [long_kv, index, folded]
+    attn_groups = [
+        SimpleNamespace(kv_cache_group_id=i, kv_cache_spec=layer_specs[name], layer_names=[name], backend=backend)
+        for i, name in enumerate(names)
+    ]
+    monkeypatch.setattr(attn_utils, "get_current_vllm_config", lambda: runtime)
+    monkeypatch.setattr(attn_utils, "_is_dsv4_model", lambda _: False)
+    views = attn_utils._reshape_kv_cache_v2(
+        attn_groups, dict.fromkeys(names, backing), "auto", [runtime.cache_config.block_size] * 3, {}, planned
+    )
+    expected_offset = layer_specs[long_kv].unpadded_page_size_bytes + layer_specs[index].unpadded_page_size_bytes
+    assert views[folded].data_ptr() - backing.data_ptr() == expected_offset
+    assert views[folded].stride(0) * views[folded].element_size() == allocation.block_stride
+    views[folded].fill_(7)
+    assert torch.count_nonzero(views[long_kv]) == 0
+    assert all(torch.count_nonzero(part) == 0 for part in views[index])
+
+
 def test_production_layout_matches_design(config, runtime):
     runtime.cache_config.block_size = 128
     specs = build_v41_cache_specs(SimpleNamespace(**(vars(config) | {"head_dim": 512, "index_head_dim": 128})), runtime)
@@ -1440,6 +1474,26 @@ def test_v41_cp_builds_device_controls_only_on_consuming_side(runtime, monkeypat
         assert builder.take_device_metadata_tasks() == ()
 
 
+@pytest.mark.parametrize("async_metadata", [False, True])
+def test_v41_cp_source_rope_initializes_global_compressor(runtime, monkeypatch, async_metadata):
+    from vllm_ascend.attention.context_parallel.dsa_v41_cp import AscendDSAV41CPMetadataBuilder
+
+    spec = collect_specs(runtime)["model.layers.2.self_attn.compressor.state_cache"]
+    builder = AscendDSAV41CPMetadataBuilder(
+        spec, ["model.layers.2.self_attn.compressor.state_cache"], runtime, torch.device("cpu")
+    )
+    tables = (torch.ones(4, 2), torch.zeros(4, 2))
+    monkeypatch.setattr(dsa_v41, "get_full_cos_and_sin_dsa_for_layer", lambda _: tables)
+    if async_metadata:
+        builder.enable_device_metadata()
+    else:
+        builder.prepare_source_rope()
+    assert builder._global_builder._c2_full_source_rope is tables
+    assert builder._c2_full_source_rope is None  # Local Q does not own compression.
+    assert builder._device_metadata_enabled is async_metadata
+    assert builder._global_builder._device_metadata_enabled is async_metadata
+
+
 @pytest.mark.parametrize("local_tokens", [0, 1, 2])
 @pytest.mark.parametrize("num_tokens", [3, 4])
 def test_v41_cp_output_exchange_only_pads_partial_ranks(monkeypatch, local_tokens, num_tokens):
@@ -1634,6 +1688,36 @@ def test_v41_cp_input_preparation_updates_empty_rank_cache(overlap, local_tokens
         assert impl._update_caches.call_args.args[2] is global_metadata
     else:
         impl._update_caches.assert_not_called()
+
+
+def test_dspark_v41_indices_keep_capture_addresses(runtime):
+    runtime.speculative_config = SimpleNamespace(num_speculative_tokens=3)
+    spec = AscendSlidingWindowMLASpec(
+        block_size=128,
+        num_kv_heads=1,
+        head_size=8,
+        dtype=torch.bfloat16,
+        sliding_window=128,
+        cache_dtype_str="bfloat16",
+        model_version="deepseek_v41",
+    )
+    builder = AscendDSAV41MetadataBuilder(spec, [], runtime, torch.device("cpu"))
+    common = _cp_common().replace(causal=False)
+    first = builder.build_for_drafting(common, 1)
+    indices_ptr = first.ori_sparse_indices.data_ptr()
+    lengths_ptr = first.ori_topk_length.data_ptr()
+    old_indices = first.ori_sparse_indices.clone()
+    common = common.replace(
+        seq_lens=torch.tensor([260, 5], dtype=torch.int32),
+        seq_lens_cpu=torch.tensor([260, 5], dtype=torch.int32),
+        max_seq_len=260,
+    )
+    second = builder.build_for_drafting(common, 1)
+    assert second.ori_sparse_indices.data_ptr() == indices_ptr
+    assert second.ori_topk_length.data_ptr() == lengths_ptr
+    assert not torch.equal(old_indices, second.ori_sparse_indices)
+    assert second.ori_sparse_indices[0, 0, 0] == 129
+    assert first.ori_topk_length.tolist() == [131, 131, 131, 5]
 
 
 def test_v41_cp_inherits_forward():

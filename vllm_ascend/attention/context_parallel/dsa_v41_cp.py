@@ -33,6 +33,13 @@ class _ReplicatedCacheMetadataBuilder(AscendDSAV41MetadataBuilder):
             kv_cache_spec, layer_names, vllm_config, device, build_query_metadata=False
         )
 
+    def prepare_source_rope(self):
+        # MRV2 initializes RoPE without enabling MRV1's async metadata queue.
+        # The replicated global builder owns compressor metadata, while the
+        # outer builder only owns local query metadata. Initialize both.
+        super().prepare_source_rope()
+        self._global_builder.prepare_source_rope()
+
     def enable_device_metadata(self):
         super().enable_device_metadata()
         self._global_builder.enable_device_metadata()

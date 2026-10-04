@@ -12,12 +12,29 @@ from vllm_ascend.ops.triton.c2_ring_metadata import build_c2_ring_metadata
 from vllm_ascend.ops.triton.fold_indexer_cache import fold_indexer_cache_rows
 from vllm_ascend.ops.triton.prepare_indexer_indices import prepare_indexer_indices
 from vllm_ascend.ops.triton.quantize_mxfp4_indexer import quantize_mxfp4_indexer, write_mxfp4_indexer_cache
+from vllm_ascend.ops.triton.spec_decode.dspark_swa_indices import build_dspark_swa_indices_triton
 from vllm_ascend.ops.triton.triton_utils import init_device_properties_triton
 
 
 @pytest.fixture(scope="module", autouse=True)
 def initialize_device_properties():
     init_device_properties_triton()
+
+
+@pytest.mark.parametrize("num_tokens", [5, 16])
+@torch.inference_mode()
+def test_dspark_swa_indices_ignore_graph_padding(num_tokens):
+    cu = torch.tensor([0, 3, 5, 5], dtype=torch.int32, device="npu")
+    lengths = torch.tensor([260, 5, 0], dtype=torch.int32, device="npu")
+    indices, visible = build_dspark_swa_indices_triton(cu, lengths, num_tokens, 192, 128)
+    expected = torch.full((num_tokens, 1, 192), -1, dtype=torch.int32)
+    expected[:3, 0, :131] = torch.arange(129, 260, dtype=torch.int32)
+    expected[3:5, 0, :5] = torch.arange(5, dtype=torch.int32)
+    expected_lengths = torch.zeros((num_tokens, 1), dtype=torch.int32)
+    expected_lengths[:3] = 131
+    expected_lengths[3:5] = 5
+    torch.testing.assert_close(indices.cpu(), expected, rtol=0, atol=0)
+    torch.testing.assert_close(visible.cpu(), expected_lengths, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("ratio", [1, 2])
