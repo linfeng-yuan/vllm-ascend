@@ -1,12 +1,18 @@
 import pytest
 import torch
 
-from vllm_ascend.utils import enable_custom_op
-
-enable_custom_op()
+from vllm_ascend.utils import load_custom_op_library
 
 IMAGE_SENTINEL_LO = 129257
 IMAGE_SENTINEL_COUNT = 5
+
+
+@pytest.fixture(scope="module", autouse=True)
+def load_gating_operator():
+    # A5 supports this operator without enabling the hardware-wide custom-op
+    # policy. Match the production router's explicit loader after device setup.
+    torch.npu.set_device(0)
+    load_custom_op_library()
 
 
 def _reference(
