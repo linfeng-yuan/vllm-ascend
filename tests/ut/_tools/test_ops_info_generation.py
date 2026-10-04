@@ -60,9 +60,14 @@ add_ops_info_target(COMPUTE_UNIT ascend950)
                 ini.write_text(self._schema(3), encoding="utf-8")
                 self._run("cmake", "--build", str(build), "--target", "generate_ops_info")
                 self._assert_outputs(generated, custom, 3)
+                # A smaller operator set/schema must not retain trailing bytes
+                # from the previous, longer JSON on the open file descriptor.
+                ini.write_text(self._schema(1), encoding="utf-8")
+                self._run("cmake", "--build", str(build), "--target", "generate_ops_info")
+                self._assert_outputs(generated, custom, 1)
                 custom.unlink()
                 self._run("cmake", "--build", str(build), "--target", "generate_ops_info")
-                self._assert_outputs(generated, custom, 3)
+                self._assert_outputs(generated, custom, 1)
 
     @staticmethod
     def _schema(outputs):
