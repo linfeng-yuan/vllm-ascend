@@ -8,6 +8,7 @@ before running the compressor, indexer and sparse-attention operators without
 moving cache or scheduler knowledge back into the model.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -182,7 +183,7 @@ class DeepseekV41LayerMetadata:
 class DeepseekV41PreparedIndexer:
     """Query-local projections and the event guarding auxiliary quantization."""
 
-    query: torch.Tensor
+    query: torch.Tensor | None
     weights: torch.Tensor
     quantized_query: torch.Tensor | None = None
     query_scale: torch.Tensor | None = None
@@ -374,6 +375,9 @@ class AscendDSAV41Impl:
         if not self.role.has_long_context or not self.role.is_index_source:
             return None
         indexer = attn.indexer
+        if indexer.qw_fusion is not None and qr.shape[0] > 0:
+            q, scale, weights = indexer.qw_fusion(self._indexer_hidden_states(hidden_states, metadata), qr, cos, sin)
+            return DeepseekV41PreparedIndexer(query=None, weights=weights, quantized_query=q, query_scale=scale)
         main_stream = torch.npu.current_stream()
         aux_stream = dsv4_dsa_overlap_stream()
 
@@ -389,7 +393,13 @@ class AscendDSAV41Impl:
 
     @staticmethod
     def _should_quantize_indexer(prepared, metadata):
-        return prepared is not None and prepared.query.shape[0] > 0 and metadata.indexer.cache.max_cache_seq_len > 0
+        return (
+            prepared is not None
+            and prepared.quantized_query is None
+            and prepared.query is not None
+            and prepared.query.shape[0] > 0
+            and metadata.indexer.cache.max_cache_seq_len > 0
+        )
 
     def _quantize_indexer_query(self, attn, prepared, metadata):
         if not self._should_quantize_indexer(prepared, metadata):
@@ -844,6 +854,16 @@ class AscendDSAV41MetadataBuilder(AttentionMetadataBuilder[AscendDSAV41Metadata]
     def enable_device_metadata(self) -> None:
         self._device_metadata_enabled = True
         self.prepare_source_rope()
+
+    @contextmanager
+    def defer_device_metadata(self):
+        """Defer this target build without changing the drafter's builder mode."""
+        was_enabled = self._device_metadata_enabled
+        self.enable_device_metadata()
+        try:
+            yield
+        finally:
+            self._device_metadata_enabled = was_enabled
 
     def take_device_metadata_tasks(self) -> tuple[DeviceMetadataTask, ...]:
         tasks = self._device_metadata_tasks

@@ -15,6 +15,30 @@ from vllm_ascend.ops.dsv41_a5 import indexer as a5_indexer
 TOKENS, TOPK = 4, 512
 
 
+def test_fused_qw_skips_redundant_query_quantization():
+    impl = _impl(SimpleNamespace(has_long_context=True, is_index_source=True))
+    packed = torch.zeros(TOKENS, 32, 64, dtype=torch.uint8)
+    scales = torch.zeros(TOKENS, 32, 4, dtype=torch.uint8)
+    weights = torch.ones(TOKENS, 32)
+    calls = []
+
+    def fused(hidden, qr, cos, sin):
+        calls.append(hidden.shape[0])
+        return packed, scales, weights
+
+    attn = SimpleNamespace(indexer=SimpleNamespace(qw_fusion=fused))
+    metadata = SimpleNamespace(swa=SimpleNamespace(num_actual_tokens=TOKENS))
+    prepared = impl._prepare_indexer_inputs(
+        attn, torch.zeros(TOKENS + 2, 5120), torch.zeros(TOKENS, 1280), None, None, metadata
+    )
+    assert calls == [TOKENS]
+    assert prepared.query is None
+    assert prepared.quantized_query is packed
+    assert prepared.query_scale is scales
+    assert prepared.weights is weights
+    assert not impl._should_quantize_indexer(prepared, metadata)
+
+
 def _impl(role):
     impl = AscendDSAV41Impl.__new__(AscendDSAV41Impl)
     impl.role = role

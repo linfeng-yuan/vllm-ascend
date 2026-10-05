@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """V4.1 replicated-cache TP-token DSA CP adapter."""
 
+from contextlib import contextmanager
 from dataclasses import replace
 
 import torch
@@ -49,6 +50,12 @@ class _ReplicatedCacheMetadataBuilder(AscendDSAV41MetadataBuilder):
             *self._global_builder.take_device_metadata_tasks(),
             *super().take_device_metadata_tasks(),
         )
+
+    @contextmanager
+    def defer_device_metadata(self):
+        # Enter the global guard first: the outer enable method enables both.
+        with self._global_builder.defer_device_metadata(), super().defer_device_metadata():
+            yield
 
     def _build_global_metadata(self, common_prefix_len, common, fast_build, kwargs):
         global_kwargs = dict(kwargs)
