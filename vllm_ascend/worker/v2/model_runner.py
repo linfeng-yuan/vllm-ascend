@@ -63,6 +63,7 @@ from vllm_ascend.core.profiling_chunk_predictor import (
     _finish_profiling_chunk_timing,
     _start_profiling_chunk_timing,
 )
+from vllm_ascend.models.deepseek_v41.cache_config import uses_a5_packed_cache
 from vllm_ascend.ops.rotary_embedding import set_cos_and_sin, update_cos_sin
 from vllm_ascend.utils import (
     is_pd_decode_recompute_scheduler_enabled,
@@ -324,7 +325,9 @@ class NPUModelRunner(GPUModelRunner):
         # Recreate along with KV initialization: profiling capture owns a
         # throwaway model state and must not leak event/buffer bindings.
         self.model_state.device_metadata = (
-            TargetDeviceMetadata() if self.ascend_config.multistream_dsv41_metadata else None
+            TargetDeviceMetadata()
+            if uses_a5_packed_cache() and self.model_config.architecture == "DeepseekV41ForCausalLM"
+            else None
         )
 
         # Upstream has bound every local cache; publish sealed plans before
@@ -386,9 +389,7 @@ class NPUModelRunner(GPUModelRunner):
         self.model_state.kvpp_is_dummy_run = dummy_run or is_profile
         metadata = getattr(self.model_state, "device_metadata", None)
         dp_coordination_context = (
-            skip_dp_coordination()
-            if should_skip_allreduce_across_dp_group(self.vllm_config)
-            else nullcontext()
+            skip_dp_coordination() if should_skip_allreduce_across_dp_group(self.vllm_config) else nullcontext()
         )
         with dp_coordination_context, metadata.activate() if metadata is not None else nullcontext():
             output = super().execute_model(

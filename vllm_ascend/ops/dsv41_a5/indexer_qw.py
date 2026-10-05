@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Opt-in Flash Q/W fusion; static weight packing, unchanged KV layout."""
+"""Automatic Flash Q/W fusion; static weight packing, unchanged KV layout."""
 
 import math
 
@@ -10,6 +10,25 @@ from torch import nn
 
 
 class IndexerQWFusion(nn.Module):
+    @staticmethod
+    def supports(wq_b, weights_proj, weights_scale: float) -> bool:
+        """Keep other checkpoints on their original projection implementation."""
+        weight = wq_b.weight
+        scales = getattr(wq_b, "weight_scale", None)
+        projection = weights_proj.weight
+        scheme = getattr(getattr(wq_b, "quant_method", None), "quant_method", None)
+        return (
+            tuple(weight.shape) == (1280, 4096)
+            and weight.dtype == torch.float8_e4m3fn
+            and scales is not None
+            and tuple(scales.shape) == (20, 4096, 2)
+            and scales.dtype == torch.uint8
+            and tuple(projection.shape) == (32, 5120)
+            and projection.dtype == torch.bfloat16
+            and math.isclose(weights_scale, 1 / 64, rel_tol=1e-12, abs_tol=0)
+            and hasattr(scheme, "dynamic_mx_quant_scale_alg")
+        )
+
     def __init__(self, wq_b, weights_proj, weights_scale: float):
         super().__init__()
         # Compiler import/registration and weight casts happen before warmup,

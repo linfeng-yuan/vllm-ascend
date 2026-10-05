@@ -568,8 +568,6 @@ class AscendConfig:
     multistream_dsv4_dsa_overlap: bool = True
     # Experimental MRV2 V4.1 metadata producer/consumer overlap. Independent
     # from Q/KV projection overlap; preserves async scheduling and cache layout.
-    multistream_dsv41_metadata: bool = False
-    enable_dsv41_indexer_qw_fusion: bool = False
     # Shared host Engram with TP1: publish lookups on a shared producer stream;
     # FULL graphs wait on descriptor-specific external events at consumers.
     # Opt in until the workload demonstrates an end-to-end benefit.

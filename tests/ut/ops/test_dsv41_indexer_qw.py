@@ -73,3 +73,29 @@ def test_unqualified_geometry_fails_before_serving(weights):
     wq.weight = torch.zeros(64, 128, dtype=torch.float8_e4m3fn)
     with pytest.raises(ValueError, match="postprocessed Flash"):
         indexer_qw.IndexerQWFusion(wq, ww, 1 / 64)
+
+
+@pytest.mark.parametrize("backend", [None, object()])
+@pytest.mark.parametrize("compatible", [False, True])
+def test_fusion_is_automatic_only_for_supported_a5_weights(weights, backend, compatible):
+    from vllm_ascend.models.deepseek_v41.indexer import DeepseekV41Indexer
+
+    wq, ww, _ = weights
+    if not compatible:
+        wq.weight = torch.zeros(1280, 4096, dtype=torch.bfloat16)
+    indexer = SimpleNamespace(dsv41_backend=backend, wq_b=wq, weights_proj=ww, weights_scale=1 / 64, qw_fusion=None)
+    DeepseekV41Indexer.prepare_qw_fusion(indexer)
+    assert (indexer.qw_fusion is not None) == (backend is not None and compatible)
+
+
+def test_model_postload_initializes_indexer_without_config_switch(weights):
+    from unittest.mock import patch
+
+    from vllm_ascend.models.deepseek_v41.indexer import DeepseekV41Indexer
+    from vllm_ascend.models.deepseek_v41.model import AscendDeepseekV41LLMForCausalLM
+
+    indexer = object.__new__(DeepseekV41Indexer)
+    model = SimpleNamespace(model=SimpleNamespace(modules=lambda: [indexer]))
+    with patch.object(DeepseekV41Indexer, "prepare_qw_fusion") as prepare:
+        AscendDeepseekV41LLMForCausalLM.process_weights_after_loading(model)
+    prepare.assert_called_once_with()

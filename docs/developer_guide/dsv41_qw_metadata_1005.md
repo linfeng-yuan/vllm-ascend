@@ -1,21 +1,20 @@
 # V4.1 A5 graph-side metadata and indexer Q/W fusion
 
-Base: `e41bd634c6a753151fe191b25d81489161d3e763` on
+Base: `ec5b8479f` (including PR #11) on
 `1005_950DT_vllm0300_rebase_main`. Review branch:
 `perf/1005-dsv41-qw-overlap`, fork PR #10.
 
 ## Scope
 
-Only two independently opt-in features are included:
+Both optimizations are automatic, with no user-facing enable/disable switches.
+A5 V4.1 MRV2 uses metadata overlap in eager execution and FULL graph replay.
+A5 Flash indexers with the supported postprocessed MXFP8/BF16 weight contract
+use Q/W fusion in eager and graph execution. Other devices/checkpoint layouts
+retain their existing projection implementation; this is capability selection,
+not an optimization toggle. Remove the former `multistream_dsv41_metadata` and
+`enable_dsv41_indexer_qw_fusion` keys from launch configurations.
 
-```json
-{
-  "multistream_dsv41_metadata": true,
-  "enable_dsv41_indexer_qw_fusion": true
-}
-```
-
-Both default to false. Indexer K/postscatter integration and its graph-bucket
+Indexer K/postscatter integration and its graph-bucket
 whitelist have been removed. Original K projection and Triton cache writes
 remain unchanged. No KV layout, L20 folded-twin ownership, block allocation
 or PD transport changes. Ordinary Linear NZ, gating and CompressorV2 are
@@ -165,10 +164,47 @@ The earlier 133-cluster baseline had HIXL transfer errors and incorrect PD
 responses with both switches off. Its direct-D scores/profiles are historical
 diagnostics, not passed 1P1D qualification of this revision.
 
-## Remaining gates
+## Default-on integration and eager compatibility
+
+The latest 1005 base includes PR #11. The runner merge preserves both its
+scoped DP-coordination bypass and the target metadata activation scope.
+Regression tests cover normal/dummy forwards and exceptions: both scopes
+must be active during execution and retired on exit.
+
+The two user-facing flags were removed rather than changed to default true.
+Metadata activation checks the A5 cache capability and V4.1 architecture, not
+graph mode. Eager submits tasks after metadata preparation and joins before
+buffer reuse; FULL capture records producer/consumer dependencies in the graph.
+Q/W weight packing occurs after loading, with no dependency on graph mode.
+Unsupported devices/checkpoint formats retain the existing projections.
+
+Validation uses isolated containers on 133.108 (P) and 133.110 (D), MRV2,
+async scheduling, block128, DP8/TP1, real routing/acceptance, RecomputeScheduler
+on D, Engram off. Neither removed flag appears in the launch scripts.
+
+- 164 targeted unit tests pass, including automatic activation, unsupported
+  hardware/weight fallback, eager/capture lifecycle and the PR #11 merge scopes.
+- Six NPU metadata tests pass (eager/FULL, buffer reuse, changing/empty batches).
+- Q/W adapter checks at T=1/16/64/384/800 preserve scales and exact graph replay;
+  dequantized query cosine remains approximately 0.999, as in the original PR.
+- Both P and D eager: direct/proxy exact-answer smoke 14/14; GSM8K 1259/1319
+  (95.451%), 208.46 seconds, no API errors/empty outputs/retries, 20 length
+  truncations at max_tokens4096. These truncations count toward the reported
+  score, not as missing requests. Eager completion is not a claim that eager
+  equals graph performance.
+- D FULL/DSpark graph regression is recorded in the PR after completion.
+
+Artifacts and literal scripts: `/mnt/share/y00882530/dsv4_1/pr10_default_1005/`.
+The earlier opt-in A/B above remains historical evidence, not a new benchmark
+of this merged default-on revision. Ruff and whitespace checks pass. Full
+`format.sh ci` still requires the absent pre-commit tooling; no serving
+dependencies were changed to bypass it.
+
+## Broader release coverage
 
 1. Extended long-context, DSACP and GPQA before broader deployment.
 2. Full repository CI; broader repeated and production-workload performance.
 
-Keep the PR draft until its stated gates have evidence. Do not publish an
-unqualified release image.
+Ready-for-review status covers the tested configuration, not qualification of
+all configurations or a release image. The broader coverage above remains
+explicitly unverified.

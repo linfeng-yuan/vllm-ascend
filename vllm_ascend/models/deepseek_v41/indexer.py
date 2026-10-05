@@ -106,10 +106,11 @@ class DeepseekV41Indexer(nn.Module):
 
     def prepare_qw_fusion(self):
         if self.dsv41_backend is None:
-            raise ValueError("Indexer Q/W fusion requires the A5 backend")
+            return
         from vllm_ascend.ops.dsv41_a5.indexer_qw import IndexerQWFusion
 
-        self.qw_fusion = IndexerQWFusion(self.wq_b, self.weights_proj, self.weights_scale)
+        if IndexerQWFusion.supports(self.wq_b, self.weights_proj, self.weights_scale):
+            self.qw_fusion = IndexerQWFusion(self.wq_b, self.weights_proj, self.weights_scale)
 
     def update_keys(self, latent, slots, cos, sin):
         """Publish source-owned index K before latent is RoPE'd as long KV."""

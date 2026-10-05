@@ -27,7 +27,7 @@ manipulation and a small gather table, then packed two-per-byte.
 from __future__ import annotations
 
 # Vendor tuning knobs are frozen to the tested defaults in this integration.
-# Service opt-in is controlled by AscendConfig.enable_dsv41_indexer_qw_fusion.
+# The A5 Flash indexer selects this implementation after weight validation.
 from collections import deque
 
 import torch
