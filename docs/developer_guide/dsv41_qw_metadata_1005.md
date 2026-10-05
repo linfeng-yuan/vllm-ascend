@@ -97,10 +97,53 @@ experimentation, **not** a substitute for end-to-end accuracy qualification.
   15.32 ms mean TPOT. Thus the combined candidate is effectively throughput
   neutral against the original path in this mixed workload, not 2.17% faster
   than the original. Its mean TPOT was slightly worse in this one comparison.
+  After restarting the identical candidate, a repeat measured 4653.13 output
+  tokens/s and 15.91 ms mean TPOT (256/256, no errors). No repeatable throughput
+  improvement has been established; do not promote this as a speedup patch.
 - A two-second service trace contains the new interleaved Q/W kernel, proving
   actual use rather than only configured use. The first window still includes
   prefill; it is not proof of decode metadata overlap. A decode-only window
   and critical-path analysis remain required before making an overlap claim.
+
+### Decode profile finding: separate stream is not sufficient
+
+A second capture used 128-token prompts and 4096-token outputs, starting after
+404930 generated tokens with 78 requests still running. Start/stop returned
+200, separated by 2.0006 seconds; all 128 requests succeeded. Rank zero's
+trace contains real FULL graph model IDs and 69 C2 metadata cycles.
+
+In that sampled trace, metadata stream 50's 276 kernels took 3641.14 us total,
+approximately 52.77 us per cycle. Their time intervals did **not** intersect
+AI-core/vector compute on the other streams (communication, waits and copies
+excluded). The target Q/W fusion kernel is present, median 13.36 us.
+
+The CPU-side MQSFMLA metadata calls numbered 207 with 24325.68 us total; QLI
+calls numbered 138 with 21540.97 us total. Dividing by the 69 cycles gives
+approximately 664.73 us per cycle across those calls, including target and
+draft metadata preparation. These are profiled host call durations, not pure
+CPU compute time or an unprofiled latency claim. Moving their device work to
+another stream has not removed the per-step host dispatch cost.
+
+**The requested main-graph metadata overlap and performance gain are not yet
+achieved.** This experimental implementation establishes lifecycle correctness
+but is not the completed optimization. Both new flags are rolled back to off
+in the experimental service; the existing attention/shared-expert multistream
+features remain enabled. The next design must capture compatible metadata
+work in the graph's side branch, rather than artificially delaying already
+finished metadata just to manufacture timeline overlap. Padded/empty ranks,
+actual request/token counts and speculative rollback must remain correct;
+capture-time Python constants cannot silently replace dynamic inputs.
+
+Raw rank-zero profile:
+
+```text
+/mnt/share/y00882530/dsv4_1/recipes_opt_1005/profiles/qw_metadata/
+dp0_pp0_tp0_dcp0_ep0_rank0_54460_20261005172352761_ascend_pt/
+ASCEND_PROFILER_OUTPUT/trace_view.json
+```
+
+`profile_decode_overlap.json` and `profile_decode_operators.jsonl` in the stage
+directory contain the interval/count analysis. No image recognition was used.
 
 The experimental PD baseline was already producing incorrect responses before
 these changes. Direct-node results must not be presented as a passed 1P1D
