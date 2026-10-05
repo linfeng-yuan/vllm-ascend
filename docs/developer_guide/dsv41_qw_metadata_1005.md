@@ -1,5 +1,23 @@
 # V4.1 A5 metadata overlap and Q/W + K/postscatter fusion experiment
 
+**On hold at the user's request.** Do not merge or deploy this experiment.
+The Q/W + K model retest was stopped before readiness; the original editable
+baseline and original operator paths are being restored on the experiment D.
+There is no complete Q/W+K GSM8K score or end-to-end performance qualification.
+The bucket whitelist is an experimental workaround, not the proposed upstream
+API. A future design needs a shape-polymorphic or bounded, prewarmed operator
+contract that works with normal framework scheduling without model-specific
+graph-bucket coupling.
+
+The runtime compilation observed here was in a direct-D test with local
+prefill/mixed batches, not a pure P-to-D disaggregated decode measurement.
+`FULL_DECODE_ONLY` does not capture those eager execution paths. In the recipes
+snapshot, decode inputs are padded to `batch_size_per_dp_rank` (execution
+engine lines 372-393, 681), and warmup uses the fixed target width `next_n+1`
+(line 830). The model worker separately selects compiled decode versus eager
+prefill (line 446). That bounds the usual decode shapes but is **not** proof
+that recipes never cold-compiles on other inputs or deployment settings.
+
 ## Scope and switches
 
 Base: `e41bd634c6a753151fe191b25d81489161d3e763`.
