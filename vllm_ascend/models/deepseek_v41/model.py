@@ -1602,6 +1602,13 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
     def retire_engram_lookups(self, *, reset_events=False):
         self.model.retire_engram_lookups(reset_events=reset_events)
 
+    def process_weights_after_loading(self):
+        # Upstream invokes this after all quantization methods transform their
+        # weights. Account persistent NZ copies before KV-cache sizing.
+        for module in tuple(self.model.modules()):
+            if isinstance(module, DeepseekV41Indexer):
+                module.prepare_qw_fusion()
+
     def get_model_state_cls(self):
         """V2 runner states read token_lookback_depth and drive engram inputs."""
         from vllm_ascend.worker.v2.model_states.deepseek_v41 import AscendDeepseekV41ModelState
