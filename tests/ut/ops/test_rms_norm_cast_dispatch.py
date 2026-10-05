@@ -30,7 +30,7 @@ def test_resolve_during_construction(invariant, a5, supported, enabled, expected
     ):
         profile.return_value.supports.return_value = supported
         actual = dispatch.get_rms_norm_cast_op()
-        assert actual is (op if expected else None)
+        assert actual is (dispatch._a5_rms_norm_cast if expected and a5 else op if expected else None)
         assert load.call_count == int(a5 and not invariant)
 
 
@@ -61,3 +61,18 @@ def test_forward_uses_bound_op_without_loading_or_device_queries(version, fused)
     else:
         norm.assert_called_once_with(x)
         op.assert_not_called()
+
+
+@pytest.mark.parametrize("rows", [1, 512, 513, 1024])
+def test_a5_shape_dispatch_preserves_large_prefill_fallback(rows):
+    x = torch.randn(rows, 8, dtype=torch.bfloat16)
+    weight = torch.ones(8, dtype=x.dtype)
+    with (
+        patch.object(dispatch.torch_npu, "npu_rms_norm", return_value=(x, None)) as norm,
+        patch.object(torch.ops._C_ascend, "npu_rms_norm_cast", create=True, return_value=(x, x.float())) as op,
+    ):
+        low, wide = dispatch._a5_rms_norm_cast(x, weight, 1e-6)
+    assert low is x
+    torch.testing.assert_close(wide, low.float(), rtol=0, atol=0)
+    assert op.call_count == int(rows <= 512)
+    assert norm.call_count == int(rows > 512)

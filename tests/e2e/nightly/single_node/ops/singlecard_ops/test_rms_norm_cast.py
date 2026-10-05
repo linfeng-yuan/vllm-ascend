@@ -10,6 +10,7 @@ import vllm_ascend.vllm_ascend_C  # type: ignore[import-untyped]  # noqa: F401
 
 from vllm_ascend.models.deepseek_v4.model import DeepseekV4DecoderLayer
 from vllm_ascend.models.deepseek_v41.model import DeepseekV41DecoderLayer
+from vllm_ascend.ops.rms_norm_cast import _a5_rms_norm_cast
 
 
 def _tolerances(dtype: torch.dtype) -> tuple[float, float]:
@@ -39,13 +40,14 @@ def test_rms_norm_cast(dtype: torch.dtype, num_tokens: int, hidden_size: int):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("hidden_size", [5120, 7168])
 @pytest.mark.parametrize("layer_type", [DeepseekV4DecoderLayer, DeepseekV41DecoderLayer])
-def test_rms_norm_cast_npu_graph(dtype: torch.dtype, hidden_size: int, layer_type):
+@pytest.mark.parametrize("rows", [16, 1024])
+def test_rms_norm_cast_npu_graph(dtype: torch.dtype, hidden_size: int, layer_type, rows):
     torch.manual_seed(11)
-    x = torch.randn(16, hidden_size, dtype=dtype, device="npu")
+    x = torch.randn(rows, hidden_size, dtype=dtype, device="npu")
     gamma = torch.randn(hidden_size, dtype=dtype, device="npu")
     layer = SimpleNamespace(
         post_attention_layernorm=SimpleNamespace(weight=gamma, variance_epsilon=1e-6),
-        _rms_norm_cast_op=torch.ops._C_ascend.npu_rms_norm_cast,
+        _rms_norm_cast_op=_a5_rms_norm_cast,
     )
 
     graph = torch.npu.NPUGraph()
@@ -62,3 +64,14 @@ def test_rms_norm_cast_npu_graph(dtype: torch.dtype, hidden_size: int, layer_typ
         graph.replay()
         torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol)
         torch.testing.assert_close(actual_fp32, actual.float(), rtol=0, atol=0)
+
+
+def test_shape_dispatch_is_fullgraph_traceable():
+    compiled = torch.compile(_a5_rms_norm_cast, backend="eager", fullgraph=True, dynamic=True)
+    weight = torch.ones(5120, dtype=torch.bfloat16, device="npu")
+    for rows in (16, 1024, 16):
+        x = torch.randn(rows, 5120, dtype=weight.dtype, device="npu")
+        low, wide = compiled(x, weight, 1e-6)
+        expected, _ = torch_npu.npu_rms_norm(x, weight, 1e-6)
+        torch.testing.assert_close(low, expected, rtol=2e-2, atol=2e-2)
+        torch.testing.assert_close(wide, low.float(), rtol=0, atol=0)
