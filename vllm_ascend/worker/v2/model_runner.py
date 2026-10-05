@@ -31,6 +31,7 @@ from vllm.sequence import IntermediateTensors
 from vllm.utils.torch_utils import async_tensor_h2d as async_copy_to_gpu
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
+from vllm.v1.worker.dp_utils import skip_dp_coordination
 from vllm.v1.worker.gpu import model_runner as vllm_model_runner
 from vllm.v1.worker.gpu.cudagraph_utils import BatchExecutionDescriptor
 from vllm.v1.worker.gpu.eplb_utils import step_eplb_after
@@ -67,6 +68,7 @@ from vllm_ascend.utils import (
     is_pd_decode_recompute_scheduler_enabled,
     lmhead_tp_enable,
     set_potential_max_tokens,
+    should_skip_allreduce_across_dp_group,
 )
 from vllm_ascend.worker.utils import disable_compilation
 from vllm_ascend.worker.v2.aclgraph_utils import ModelAclGraphManager
@@ -383,7 +385,12 @@ class NPUModelRunner(GPUModelRunner):
 
         self.model_state.kvpp_is_dummy_run = dummy_run or is_profile
         metadata = getattr(self.model_state, "device_metadata", None)
-        with metadata.activate() if metadata is not None else nullcontext():
+        dp_coordination_context = (
+            skip_dp_coordination()
+            if should_skip_allreduce_across_dp_group(self.vllm_config)
+            else nullcontext()
+        )
+        with dp_coordination_context, metadata.activate() if metadata is not None else nullcontext():
             output = super().execute_model(
                 scheduler_output,
                 intermediate_tensors=intermediate_tensors,
