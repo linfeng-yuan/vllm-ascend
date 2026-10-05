@@ -192,7 +192,11 @@ on D, Engram off. Neither removed flag appears in the launch scripts.
   truncations at max_tokens4096. These truncations count toward the reported
   score, not as missing requests. Eager completion is not a claim that eager
   equals graph performance.
-- D FULL/DSpark graph regression is recorded in the PR after completion.
+- P eager with D FULL_DECODE_ONLY and DSpark FULL graph: direct/proxy smoke
+  14/14; GSM8K 1256/1319 (95.224%), 38.15 seconds, no API errors/empty outputs/
+  retries, 18 length truncations. D completed both target and draft graph
+  capture without framework/device errors. The P cache was warm on this run;
+  do not interpret these GSM8K elapsed times as a controlled performance A/B.
 
 Artifacts and literal scripts: `/mnt/share/y00882530/dsv4_1/pr10_default_1005/`.
 The earlier opt-in A/B above remains historical evidence, not a new benchmark
