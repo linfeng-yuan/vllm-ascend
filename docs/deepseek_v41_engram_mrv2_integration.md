@@ -80,9 +80,57 @@ Custom-script evaluation, not AIS Bench: concurrency200, max_tokens4096,
 temperature0, top_p1, thinking=false, historical answer:$ANSWER prompt.
 A repeat reaches the OFF score, so the first three-question difference is
 not a demonstrated stable regression. This is not proof of numerical
-equivalence: truncations remain, and GPQA/long-context/multimodal coverage
-is not included. GSM duration is not a controlled performance measurement
+equivalence: GSM truncations remain, and long-context/multimodal coverage
+is not included. GPQA follow-up is recorded below. GSM duration is not a controlled performance measurement
 because output lengths and cache state differ.
+
+### GPQA Diamond follow-up and output-quality audit
+
+Same running 1P1D (`b4764709d`), Engram ON, D overlap ON. No service restart,
+code change or profiler capture occurred during the run. AIS Bench
+`ais-bench-benchmark==3.1.20260630` (source `1e7cb37e3`) ran on 141.62 in
+CPU-only container `ylf_gpqa_pr14_1006`; dependencies were not upgraded.
+
+Historical GPQA Diamond prompt/evaluator, non-streaming, thinking=true,
+temperature=1, top_p=1, max_out_len=128000, retry=2, no warmups. Configured
+concurrency200; the dataset contains198 requests, so actual concurrency
+cannot reach200. This is not the GSM8K no-thinking configuration.
+
+- AIS Bench: **180/198 = 90.91%**, extraction100%, all198 unique records
+  successful, inference406.33s.
+- All198 outputs contain a nonempty final answer and end with `Answer: A/B/C/D`.
+  No U+FFFD replacement characters or unexpected control characters.
+- Heuristic full-output scan finds no long consecutive token loop (period
+  1..64 lexical tokens, at least3 copies and96 tokens in the repeated span),
+  no character run of16 or more, and no long line repeated4 or more times.
+  Final-answer sections have no16-token phrase repeated4 or more times.
+- A looser repeated16-token-phrase check flags52 reasoning sections, commonly
+  repeated question excerpts, chemical names or formulas. This is a review
+  candidate count, **not52 corrupt outputs**. Long reasoning does revisit
+  hypotheses and can be redundant; do not describe all outputs as concise
+  or entirely repetition-free.
+- Manually reviewed all18 wrong final answers with their questions and
+  beginning/middle/end samples from the10 longest outputs by character count.
+  Reviewed answers remain on-topic and readable; wrong options are not caused
+  by empty/garbled/unparseable output. This is not a domain-expert validation
+  of every reasoning step or proof of no numerical/semantic regression.
+- Offline retokenization with the served model's tokenizer: raw output median
+  1780.5 tokens, maximum44869 (id147), none reaches128000. All final answers
+  are complete. AIS accuracy artifacts do **not** retain API finish_reason,
+  so do not claim a measured zero `finish_reason=length` count.
+
+No controlled same-config GPQA overlap-OFF pair was run. Earlier169/198 data
+used Engram OFF and is not an apples-to-apples comparison. This run supports
+correct serving and no obvious output collapse on this dataset, not a blanket
+"no degradation" claim. Preserve it as the pre-graph-producer baseline;
+repeat scoring and output-quality checks after the scheduling redesign.
+
+Artifacts on 141.62:
+`/mnt/share/y00882530/dsv4_1/pr14_refreshed_1005/gpqa_c200/outputs/20261006_003926/`.
+Local copy: `deployment/pr14_refreshed_1005/gpqa_c200_results/` in the parent
+workspace, including original predictions/results, `quality_audit.json`,
+`retokenized_lengths.json` and human-review text exports. The audit scripts
+are in the parent workspace's `deployment/pr14_refreshed_1005/` directory.
 
 ### Timed A/B, profiler disabled
 
