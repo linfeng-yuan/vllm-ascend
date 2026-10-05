@@ -305,6 +305,8 @@ class ModelWithContext(nn.Module):
             _EXTRA_CTX.is_draft_model_prefill = True
 
         try:
+            if self.device_metadata is not None:
+                self.device_metadata.begin_forward()
             return self.original_model(*args, **kwargs)
         finally:
             # Warmup and actual capture receive separate prepare_attn calls.

@@ -1496,16 +1496,10 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
     def process_weights_after_loading(self):
         # Upstream invokes this after all quantization methods transform their
         # weights. Account persistent NZ copies before KV-cache sizing.
-        config = get_ascend_config()
-        if config.enable_dsv41_indexer_qw_fusion or config.enable_dsv41_indexer_k_fusion:
+        if get_ascend_config().enable_dsv41_indexer_qw_fusion:
             for module in tuple(self.model.modules()):
                 if isinstance(module, DeepseekV41Indexer):
-                    if config.enable_dsv41_indexer_qw_fusion:
-                        module.prepare_qw_fusion()
-                    if config.enable_dsv41_indexer_k_fusion:
-                        module.prepare_k_fusion(
-                            get_current_vllm_config().compilation_config.cudagraph_capture_sizes or ()
-                        )
+                    module.prepare_qw_fusion()
 
     def forward(
         self,

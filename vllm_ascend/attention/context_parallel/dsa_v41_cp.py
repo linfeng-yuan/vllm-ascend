@@ -52,9 +52,12 @@ class _ReplicatedCacheMetadataBuilder(AscendDSAV41MetadataBuilder):
         )
 
     @contextmanager
-    def defer_device_metadata(self):
+    def defer_device_metadata(self, *, in_graph: bool = False):
         # Enter the global guard first: the outer enable method enables both.
-        with self._global_builder.defer_device_metadata(), super().defer_device_metadata():
+        with (
+            self._global_builder.defer_device_metadata(in_graph=in_graph),
+            super().defer_device_metadata(in_graph=in_graph),
+        ):
             yield
 
     def _build_global_metadata(self, common_prefix_len, common, fast_build, kwargs):

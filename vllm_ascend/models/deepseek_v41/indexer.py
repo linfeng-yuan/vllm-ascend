@@ -48,7 +48,6 @@ class DeepseekV41Indexer(nn.Module):
         super().__init__()
         self.owns_k = owns_k
         self.qw_fusion = None
-        self.k_fusion = None
         self.dsv41_backend = DeviceOperator.get_deepseek_v41_backend()
         self.compress_ratio = compress_ratio
         self.n_heads = int(config.index_n_heads)
@@ -112,26 +111,9 @@ class DeepseekV41Indexer(nn.Module):
 
         self.qw_fusion = IndexerQWFusion(self.wq_b, self.weights_proj, self.weights_scale)
 
-    def prepare_k_fusion(self, token_counts):
-        if not self.owns_k:
-            return
-        if self.dsv41_backend is None:
-            raise ValueError("Indexer K fusion requires the A5 backend")
-        from vllm_ascend.ops.dsv41_a5.indexer_k import IndexerKFusion
-
-        self.k_fusion = IndexerKFusion(self.wk, self.k_norm, self.rope_width, token_counts)
-
-    def update_keys(self, latent, slots, cos, sin, flat_slots=None):
+    def update_keys(self, latent, slots, cos, sin):
         """Publish source-owned index K before latent is RoPE'd as long KV."""
         if not self.owns_k or latent.shape[0] == 0:
-            return
-        if self.k_fusion is not None and self.k_fusion.supports_tokens(latent.shape[0]):
-            cache = self.k_cache.kv_cache[0]
-            self.k_fusion(latent, flat_slots, cos, sin, cache)
-            # Candidate-source L20 still owns both views. Do not change the
-            # allocator or the folded cache consumed by subsequent QSLI layers.
-            if self.k_cache_folded is not None:
-                fold_indexer_cache_rows(cache, self.k_cache_folded.kv_cache[0], slots)
             return
         key = self.k_norm(self.wk(latent)).view(-1, 1, self.width)
         if self.dsv41_backend is not None:

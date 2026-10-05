@@ -61,7 +61,10 @@ class DeviceMetadataTaskProvider(Protocol):
 class DeviceMetadataExecutor:
     """Submit device metadata tasks on a worker-owned NPU stream."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, capture_producers: bool = False) -> None:
+        # MRV1 keeps its graph-external producer protocol unchanged. MRV2
+        # captures both sides of the dependency and joins them in one graph.
+        self.capture_producers = capture_producers
         self.stream = torch.npu.Stream()
         self._inputs_ready = torch.npu.Event()
         self._stage_ready: dict[tuple[DeviceMetadataStage, int], torch.npu.Event] = {}
@@ -88,6 +91,8 @@ class DeviceMetadataExecutor:
         tasks: Iterable[DeviceMetadataTask],
         batch_descriptor: BatchDescriptor | None = None,
     ) -> None:
+        if self.capture_producers and batch_descriptor is not None:
+            raise ValueError("Graph-side producers must not use graph-external events")
         if self._submission_in_flight:
             raise RuntimeError("The previous device metadata submission has not been released")
         ordered_tasks = sorted(
@@ -122,7 +127,7 @@ class DeviceMetadataExecutor:
         self._inputs_ready.record(torch.npu.current_stream())
         with torch.npu.stream(self.stream):
             self.stream.wait_event(self._inputs_ready)
-            if self._has_reuse_fence:
+            if self._has_reuse_fence and not self.capture_producers:
                 self.stream.wait_event(self._buffer_reusable)
 
             task_index = 0
@@ -156,8 +161,11 @@ class DeviceMetadataExecutor:
     def release(self) -> None:
         if not self._submission_in_flight:
             raise RuntimeError("No device metadata submission is in flight")
-        self._buffer_reusable.record(torch.npu.current_stream())
-        self._has_reuse_fence = True
+        if not self.capture_producers:
+            self._buffer_reusable.record(torch.npu.current_stream())
+            self._has_reuse_fence = True
+        # Captured producers are joined before release. The next input-ready
+        # event follows all consumers on the main stream and fences reuse.
         self._submission_in_flight = False
         self._batch_descriptor = None
 

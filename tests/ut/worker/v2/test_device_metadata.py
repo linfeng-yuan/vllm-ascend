@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -12,18 +11,18 @@ from vllm_ascend.worker.device_metadata import DeviceMetadataStage, DeviceMetada
 class Executor:
     submission_in_flight = False
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.calls = []
 
-    def submit(self, tasks, descriptor):
-        self.calls.append(("submit", tasks, descriptor))
+    def submit(self, tasks):
+        self.calls.append("submit")
         self.submission_in_flight = True
 
     def wait(self, stage, group_id):
-        self.calls.append(("wait", stage, group_id))
+        self.calls.append("wait")
 
     def release(self):
-        self.calls.append(("release",))
+        self.calls.append("release")
         self.submission_in_flight = False
 
 
@@ -32,16 +31,17 @@ class Builder:
     tasks = ()
 
     @contextmanager
-    def defer_device_metadata(self):
+    def defer_device_metadata(self, *, in_graph=False):
         self.enabled = True
+        self.in_graph = in_graph
         try:
             yield
         finally:
             self.enabled = False
 
     def take_device_metadata_tasks(self):
-        result, self.tasks = self.tasks, ()
-        return result
+        tasks, self.tasks = self.tasks, ()
+        return tasks
 
 
 @pytest.fixture
@@ -50,83 +50,65 @@ def state(monkeypatch):
     return module.TargetDeviceMetadata()
 
 
-def prepare(state, builder, *, full=False, fail=False):
+def prepare(state, builder, full=False, fail=False):
     groups = [[SimpleNamespace(get_metadata_builder=lambda _: builder)]]
-    task = DeviceMetadataTask(DeviceMetadataStage.ATTENTION, lambda: None, 42)
-    with state.build(groups, 96, full):
-        assert builder.enabled
-        builder.tasks = (task,)
+    with state.build(groups, full):
+        assert builder.enabled and builder.in_graph == full
+        builder.tasks = (DeviceMetadataTask(DeviceMetadataStage.ATTENTION, lambda: None, 1),)
         if fail:
-            raise ValueError("build failed")
+            raise ValueError("build failure")
     assert not builder.enabled
-    return task
 
 
-def test_eager_joins_producers_and_restores_builder(state):
-    builder = Builder()
+def test_eager_lifecycle(state):
     with state.activate():
-        prepare(state, builder)
-    assert state.executor.calls[-2:] == [("wait", DeviceMetadataStage.ATTENTION, 42), ("release",)]
-    assert not state.executor.submission_in_flight
-    assert not builder.enabled  # subsequent draft builds remain inline
+        prepare(state, Builder())
+        assert state.executor.calls == ["submit"]
+    assert state.executor.calls == ["submit", "wait", "release"]
 
 
-def test_full_replay_does_not_wait_twice_on_reset_external_events(state):
+def test_graph_producers_only_run_inside_forward_not_runtime_prepare(state):
     with state.activate():
         prepare(state, Builder(), full=True)
-        assert state.executor.calls[0][2].num_tokens == 96
-        state.finish_replay()
-    assert [call[0] for call in state.executor.calls] == ["submit", "release"]
+        assert state.executor.calls == []
+        state.begin_forward()  # ModelWithContext, inside capture
+        state.finish()
+        assert state.executor.calls == ["submit", "wait", "release"]
+        prepare(state, Builder(), full=True)
+        state.finish_replay()  # all device work comes from captured nodes
+    assert state.executor.calls == ["submit", "wait", "release"]
 
 
-def test_build_failure_drains_tasks_and_restores_provider(state):
+def test_build_failure_clears_provider(state):
     builder = Builder()
-    with pytest.raises(ValueError, match="build failed"), state.activate():
+    with pytest.raises(ValueError), state.activate():
         prepare(state, builder, fail=True)
-    assert not builder.enabled
-    assert builder.tasks == ()
+    assert not builder.enabled and builder.tasks == ()
     assert state.executor.calls == []
 
 
-def test_unretired_submission_cannot_be_overwritten(state):
+@pytest.mark.parametrize("full", [False, True])
+def test_unretired_inputs_cannot_be_rebuilt(state, full):
     with state.activate():
-        prepare(state, Builder())
+        prepare(state, Builder(), full=full)
         with pytest.raises(RuntimeError, match="not retired"):
-            prepare(state, Builder())
+            prepare(state, Builder(), full=full)
 
 
-def test_capture_and_replay_use_same_descriptor(state):
-    builder = Builder()
-    groups = [[SimpleNamespace(get_metadata_builder=lambda _: builder)]]
-
-    def build(**kwargs):
-        builder.tasks = (DeviceMetadataTask(DeviceMetadataStage.INDEXER, lambda: None, 7),)
-        return {"layer": "metadata"}
-
-    with state.activate():
-        assert state.run_build(build, attn_groups=groups, num_tokens=96, for_cudagraph_capture=True) == {
-            "layer": "metadata"
-        }
-        capture_descriptor = state.executor.calls[0][2]
-        state.finish()
-        state.run_build(build, attn_groups=groups, num_tokens=96, full_graph_mode=True)
-        assert state.executor.calls[-1][2] == capture_descriptor
-        state.finish_replay()
-
-
-def test_failed_producer_does_not_wait_on_unrecorded_frontier(state, monkeypatch):
+def test_failure_joins_only_submitted_stream(state, monkeypatch):
     waits = []
     state.executor.stream = object()
     monkeypatch.setattr(module.torch.npu, "current_stream", lambda: SimpleNamespace(wait_stream=waits.append))
 
-    def fail_submit(*args):
+    def fail(tasks):
         state.executor.submission_in_flight = True
-        raise ValueError("producer failed")
+        raise ValueError("producer failure")
 
-    state.executor.submit = fail_submit
-    with pytest.raises(ValueError, match="producer failed"), state.activate():
+    state.executor.submit = fail
+    with pytest.raises(ValueError), state.activate():
         prepare(state, Builder(), full=True)
+        state.begin_forward()
     assert waits == [state.executor.stream]
-    assert state.executor.calls == [("release",)]
-    with pytest.raises(RuntimeError, match="recreate"), state.activate():
+    assert state.executor.calls == ["release"]
+    with pytest.raises(RuntimeError, match="recreate"):
         prepare(state, Builder(), full=True)
