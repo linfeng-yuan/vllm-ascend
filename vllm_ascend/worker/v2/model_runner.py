@@ -75,6 +75,7 @@ from vllm_ascend.worker.v2.attn_utils import (
     skip_ring_state_update,
 )
 from vllm_ascend.worker.v2.device_metadata import TargetDeviceMetadata
+from vllm_ascend.worker.v2.dp_utils import dp_coordination_context
 from vllm_ascend.worker.v2.eplb import AscendEPLBController
 from vllm_ascend.worker.v2.input_batch import AscendInputBatch, AscendInputBuffers
 from vllm_ascend.worker.v2.kvpp import KVPPRuntime
@@ -383,7 +384,12 @@ class NPUModelRunner(GPUModelRunner):
 
         self.model_state.kvpp_is_dummy_run = dummy_run or is_profile
         metadata = getattr(self.model_state, "device_metadata", None)
-        with metadata.activate() if metadata is not None else nullcontext():
+        # _dummy_run delegates here too. Use the upstream scoped bypass rather
+        # than replacing its dispatcher or making every DP rank a singleton.
+        with (
+            dp_coordination_context(self.vllm_config, allow_ubatching=self.ubatch_runner is not None),
+            metadata.activate() if metadata is not None else nullcontext(),
+        ):
             output = super().execute_model(
                 scheduler_output,
                 intermediate_tensors=intermediate_tensors,
