@@ -2,10 +2,12 @@
 
 ## Scope and provenance
 
-This branch is based on `1005_950DT_vllm0300_rebase_main` at `ec5b8479f`
-(PR #11 already merged). It cherry-picks PR #9 commits `905a11f32` and
-`9b3f169ef` with their original authors and `-x` provenance, then adds the
-registered-wrapper integration fix. It does not include PR #10 or PR #13.
+This branch now includes `1005_950DT_vllm0300_rebase_main` at `32284fe0c`
+(PR #10 and #11 merged) and the author's refreshed PR #9 head `5b1936cc0`.
+The original cherry-picks `905a11f32` and `9b3f169ef` retain their authors and
+`-x` provenance. Merge `b4764709d` brings in the author's latest commits without
+rewriting the published PR #14 branch, retaining the wrapper integration fix.
+PR #13 is not included.
 No KV-cache layout, native operator, dependency version, or Indexer K changes
 are introduced by the integration fix.
 
@@ -31,7 +33,9 @@ are introduced by the integration fix.
    behavior for other models and gather history exactly once for V4.1.
 5. Resolve the runner cherry-pick conflict by retaining both PR #11's scoped
    DP-coordination bypass and PR #9's `try/finally` lookup retirement. Neither
-   optimization replaces the other's lifecycle handling.
+   optimization replaces the other's lifecycle handling. The refreshed merge
+   also preserves PR #10's metadata activation, with lookup retirement nested
+   inside both contexts as in the author's latest runner implementation.
 
 ## Regression coverage
 
@@ -43,6 +47,13 @@ are introduced by the integration fix.
 - Existing one-card graph replay and two-card DP-shared-table graph tests.
 
 ## Validation status
+
+On refreshed code `b4764709d`, 140 targeted unit tests pass, including the real
+registry contract and metadata/DP coordination regressions. The NPU lookback,
+one-card UVA replay and two-card DP-shared-table graph tests pass (3 total).
+These are component checks, not proof of full-model overlap or accuracy.
+Fresh full-weight 1P1D OFF/ON regressions and profiles are in progress on
+133.108/133.110; results below describe earlier validation unless noted.
 
 The four missing wrapper contracts fail before the fix. After the fix, 91
 targeted unit tests pass across `test_engram_multistream.py`,
