@@ -67,9 +67,16 @@ def test_source_writer_keeps_folded_twin_and_skips_nonowners(monkeypatch):
 
     calls = []
     cache, folded = object(), object()
+
+    class Fused:
+        supports_tokens = staticmethod(lambda tokens: tokens == 2)
+
+        def __call__(self, *args):
+            calls.append(("fused", args))
+
     source = SimpleNamespace(
         owns_k=True,
-        k_fusion=lambda *args: calls.append(("fused", args)),
+        k_fusion=Fused(),
         k_cache=SimpleNamespace(kv_cache=[cache]),
         k_cache_folded=SimpleNamespace(kv_cache=[folded]),
     )
@@ -79,9 +86,45 @@ def test_source_writer_keeps_folded_twin_and_skips_nonowners(monkeypatch):
     assert calls == [("fused", (latent, flat, None, None, cache)), ("fold", (cache, folded, slots))]
     calls.clear()
     source.owns_k = False
-    indexer.DeepseekV41Indexer.prepare_k_fusion(source)
+    indexer.DeepseekV41Indexer.prepare_k_fusion(source, [2])
     indexer.DeepseekV41Indexer.update_keys(source, latent, slots, None, None, flat)
     assert not calls
     source.owns_k = True
     indexer.DeepseekV41Indexer.update_keys(source, torch.empty(0, 512), slots, None, None, flat)
     assert not calls
+
+
+def test_only_configured_graph_token_counts_are_eligible(adapter):
+    fusion, _ = adapter
+    fusion.token_counts = frozenset([1, 2, 4, 8, 16, 32, 64, 384])
+    assert fusion.supports_tokens(64)
+    assert fusion.supports_tokens(384)
+    assert not fusion.supports_tokens(63)
+    assert not fusion.supports_tokens(1024)
+    fusion.token_counts = frozenset()
+    assert not fusion.supports_tokens(1)
+
+
+def test_unbucketed_shape_uses_original_writer_without_compiling():
+    from vllm_ascend.models.deepseek_v41 import indexer
+
+    writes = []
+    key, scale, slots = object(), object(), object()
+    source = SimpleNamespace(
+        owns_k=True,
+        k_fusion=SimpleNamespace(supports_tokens=lambda tokens: False),
+        wk=lambda x: torch.zeros(x.shape[0], 128),
+        k_norm=lambda x: x,
+        width=128,
+        rope_width=64,
+        k_cache=SimpleNamespace(kv_cache=[(key, scale)]),
+        k_cache_folded=None,
+        dsv41_backend=SimpleNamespace(
+            apply_partial_rotary_inplace=lambda *args, **kwargs: None,
+            write_index_cache=lambda *args: writes.append(args),
+        ),
+    )
+    indexer.DeepseekV41Indexer.update_keys(source, torch.empty(7, 512), slots, None, None)
+    assert writes[0][0] == (key, scale)
+    assert writes[0][1] is slots
+    assert writes[0][2].shape == (7, 128)

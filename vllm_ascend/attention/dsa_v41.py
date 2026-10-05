@@ -547,6 +547,7 @@ class AscendDSAV41Impl:
             source_sin,
             indexer_metadata.cache.flat_slot_mapping[: positions.shape[0]]
             if getattr(attn.indexer, "k_fusion", None) is not None
+            and attn.indexer.k_fusion.supports_tokens(latent.shape[0])
             else None,
         )
         latent = latent.view(-1, 1, attn.head_dim)

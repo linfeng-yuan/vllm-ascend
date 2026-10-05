@@ -112,20 +112,20 @@ class DeepseekV41Indexer(nn.Module):
 
         self.qw_fusion = IndexerQWFusion(self.wq_b, self.weights_proj, self.weights_scale)
 
-    def prepare_k_fusion(self):
+    def prepare_k_fusion(self, token_counts):
         if not self.owns_k:
             return
         if self.dsv41_backend is None:
             raise ValueError("Indexer K fusion requires the A5 backend")
         from vllm_ascend.ops.dsv41_a5.indexer_k import IndexerKFusion
 
-        self.k_fusion = IndexerKFusion(self.wk, self.k_norm, self.rope_width)
+        self.k_fusion = IndexerKFusion(self.wk, self.k_norm, self.rope_width, token_counts)
 
     def update_keys(self, latent, slots, cos, sin, flat_slots=None):
         """Publish source-owned index K before latent is RoPE'd as long KV."""
         if not self.owns_k or latent.shape[0] == 0:
             return
-        if self.k_fusion is not None:
+        if self.k_fusion is not None and self.k_fusion.supports_tokens(latent.shape[0]):
             cache = self.k_cache.kv_cache[0]
             self.k_fusion(latent, flat_slots, cos, sin, cache)
             # Candidate-source L20 still owns both views. Do not change the

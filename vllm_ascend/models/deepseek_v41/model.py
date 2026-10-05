@@ -1503,7 +1503,9 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
                     if config.enable_dsv41_indexer_qw_fusion:
                         module.prepare_qw_fusion()
                     if config.enable_dsv41_indexer_k_fusion:
-                        module.prepare_k_fusion()
+                        module.prepare_k_fusion(
+                            get_current_vllm_config().compilation_config.cudagraph_capture_sizes or ()
+                        )
 
     def forward(
         self,

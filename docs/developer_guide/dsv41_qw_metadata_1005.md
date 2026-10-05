@@ -174,6 +174,36 @@ through physical byte offset 2147484544, while page-zero sentinels remained
 unchanged (no 32-bit wrap). Real-model accuracy and end-to-end performance
 still require validation before promotion.
 
+Integration follow-up: 78 related CPU unit tests pass. Eight A5 NPU tests
+also pass with three changing-input graph replays per case (page64/128,
+T=1/16/64/384), comparing the entire backing allocation and the folded twin
+byte for byte. The NPU test was executed standalone outside the repository's
+shared e2e conftest; this is not a full e2e CI run. The adapter microbenchmark
+measured page128 T1/T16/T64/T384 reference 7.15/10.19/14.59/22.99 us versus
+fused 4.64/4.64/6.62/14.75 us. Differences from earlier timings include the
+measurement run and current wrapper; these are local kernel-chain numbers.
+
+### Avoid request-time K compilation
+
+The first unrestricted K integration exposed a cold-start regression in real
+mixed batching: `py-spy` showed workers compiling
+`ops.indexer_prologue_k._get_fused_pipeline_callable` through bisheng in the
+request path as token counts changed. That GSM8K attempt was intentionally
+stopped after 109 records; it is a partial diagnostic, **not an accuracy
+score**. Logs are preserved as `gsm1319_qw_k_cold_partial.log` and
+`d_qw_k_cold_initial.log` in the stage directory.
+
+The model adapter now admits only token counts from
+`compilation_config.cudagraph_capture_sizes`. All other shapes use the
+original K projection/RMSNorm/RoPE/Triton writer, without a new DSL compile.
+This retains K fusion in the warmed full-decode graph buckets and keeps
+arbitrary prefill/mixed shapes on the proven path. No extra synchronization,
+tensor-value host reads or cache layout changes are introduced. With no graph
+buckets configured, this integration leaves the original writer active.
+80 related unit tests pass, including unbucketed-shape fallback and empty
+bucket behavior. First-time graph-bucket compilation still adds startup time;
+it must not be advertised as eliminated or counted as steady-state latency.
+
 ## How recipes captures metadata
 
 Source snapshot: `cann-recipes-infer` commit
