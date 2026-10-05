@@ -1,14 +1,15 @@
-# V4.1 A5 metadata overlap and Q/W fusion experiment
+# V4.1 A5 metadata overlap and Q/W + K/postscatter fusion experiment
 
 ## Scope and switches
 
 Base: `e41bd634c6a753151fe191b25d81489161d3e763`.
-Both features are opt-in and independently testable in `additional_config`:
+All three features are opt-in and independently testable in `additional_config`:
 
 ```json
 {
-  "multistream_dsv41_metadata": true,
-  "enable_dsv41_indexer_qw_fusion": true
+  "multistream_dsv41_metadata": false,
+  "enable_dsv41_indexer_qw_fusion": true,
+  "enable_dsv41_indexer_k_fusion": true
 }
 ```
 
@@ -149,7 +150,7 @@ The experimental PD baseline was already producing incorrect responses before
 these changes. Direct-node results must not be presented as a passed 1P1D
 regression. PD routing/transfer diagnosis remains a separate prerequisite.
 
-## K/postscatter feasibility
+## K/postscatter integration
 
 The installed `ops.indexer_prologue_k` uses BF16 matmul followed by fused
 RMSNorm, adjacent-pair RoPE, MXFP4 packing and scatter. It accepts explicit
@@ -161,12 +162,54 @@ K/scale bytes and the existing Triton-folded twin matched exactly; untouched
 bytes retained their sentinel. For example, page128/T64 measured approximately
 14.50 us reference versus 8.91 us fused in repeated graph microbenchmarks.
 
-Candidate integration: write the existing split planes, then retain the
-existing fold for L20. No layout changes are needed for this route. It is not
-enabled in the model yet. The large-offset test also matched the reference
+The opt-in adapter writes the existing split planes, then retains the
+existing fold for L20. No layout changes are needed for this route. Static
+WK NZ packing and norm-weight conversion happen after weight loading, before
+KV memory sizing. Non-source layers do not prepare or invoke this adapter.
+The prepared compression-aware INT64 flat slots are reused, not reconstructed
+using the logical block size. Empty batches bypass the kernel. The installed
+arena implementation is required; no wheel is removed or dependency upgraded.
+The large-offset test also matched the reference
 through physical byte offset 2147484544, while page-zero sentinels remained
 unchanged (no 32-bit wrap). Real-model accuracy and end-to-end performance
 still require validation before promotion.
+
+## How recipes captures metadata
+
+Source snapshot: `cann-recipes-infer` commit
+`2225cae19d7612c1242d0815271e86e13eea2c95`.
+This is a source-level explanation of its configured decode path, not a claim
+that every event in a separately supplied trace has been matched to this SHA.
+
+- `executor/core/model_worker/model_worker.py:46`: `main_decode` calls
+  `self.forward`; `compile_model` at line 483 selects that interface.
+- `executor/utils/graph_utils.py:66`: `npugraph_ex` compiles that callable via
+  `cache_compile` or `torch.compile(..., fullgraph=True, backend="npugraph_ex")`.
+- `models/deepseek_v4_1/models/modeling_deepseek.py:3149`: **inside forward**,
+  `generate_kernel_metadata` runs before the model layers. It is not in the
+  host-only `preprocess_model_inputs` block at line 3124.
+- The generator at line 2994 records input readiness, switches to the native
+  metadata stream, waits for inputs and produces MQSFMLA metadata. Event 1
+  makes that result available to the first attention consumer while indexer
+  metadata continues. Event 2 releases QLI/QSLI consumers.
+- `executor/utils/stream_utils.py:50` uses native `torch.npu.stream` for this
+  mode, with native event record/wait. These operations belong to the compiled
+  forward's multi-stream graph, rather than a separate host launch per decode
+  iteration. Eager execution uses the same stream organization without replay.
+- Draft decode has a separate compiled interface:
+  `executor/core/model_worker/dspark_worker.py:129` compiles
+  `forward_spec_decode_graph`; target and draft are not one undifferentiated
+  graph.
+
+Therefore the answer is **both an auxiliary stream and graph-side capture /
+replay**, when multi-stream + npugraph_ex decode is enabled. Tensor metadata
+generation and dependencies are captured; this does not mean the scheduler,
+Python input preparation or every host action is captured. Our current
+experimental external producer does not replicate that capture boundary.
+Moving the producer inside requires fixed-address device inputs and correct
+dynamic actual lengths, padding, async buffer lifetime and draft rollback.
+Recipes' position-derived QSLI candidate lengths must first be proved
+equivalent to the framework candidate lengths, not copied unconditionally.
 
 ## Review and reproduction
 
@@ -200,8 +243,14 @@ pytest -q \
   tests/ut/models/test_deepseek_v41_preprocess.py \
   tests/ut/worker/test_device_metadata.py \
   tests/ut/worker/v2/test_device_metadata.py \
-  tests/ut/ops/test_dsv41_indexer_qw.py
+  tests/ut/ops/test_dsv41_indexer_qw.py \
+  tests/ut/ops/test_dsv41_indexer_k.py
 ```
+
+K integration can be tested independently with
+`tests/e2e/pull_request/one_card/test_dsv41_indexer_k_fusion.py` on the qualified
+A5 arena/DSL stack. `run_d_qw_k_candidate.sh` enables Q/W and K with metadata
+off, so the operator comparison is not confounded by the external producer.
 
 ## Remaining acceptance gates
 

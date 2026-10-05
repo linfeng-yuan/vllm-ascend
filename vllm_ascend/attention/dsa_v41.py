@@ -545,6 +545,9 @@ class AscendDSAV41Impl:
             index_slots,
             source_cos,
             source_sin,
+            indexer_metadata.cache.flat_slot_mapping[: positions.shape[0]]
+            if getattr(attn.indexer, "k_fusion", None) is not None
+            else None,
         )
         latent = latent.view(-1, 1, attn.head_dim)
         AscendDSAV41Impl._apply_rotary(attn, latent, source_cos, source_sin)
