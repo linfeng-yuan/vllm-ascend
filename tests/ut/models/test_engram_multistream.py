@@ -232,6 +232,7 @@ def test_dp_alltoall_and_tp_gather_finish_before_each_table_is_published(runtime
 
     class HashState:
         lookback_depth = 2
+        use_slot_cache = True
 
         def ensure_cache(self):
             return True
@@ -297,6 +298,7 @@ def test_sp_row_copy_waits_for_its_table(runtime, monkeypatch):
     calls, _, _ = runtime
     model = make_model()
     model.use_sequence_parallel, model.engram_rotated = True, False
+    model._mtp_hidden_buffer = None
     model.hc_mult, model.aux_hidden_state_layers = 1, ()
     model.shared_attention_state = SimpleNamespace(reset=lambda: None)
     model.norm = lambda values: values

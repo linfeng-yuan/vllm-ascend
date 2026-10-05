@@ -66,6 +66,7 @@ def make_model():
     model._engram_input_buffers, model._engram_prepare_stream = None, None
     model._engram_graph_events = {}
     model._engram_max_tokens = 8
+    model._mtp_hidden_buffer = None
     model.engram_rotation = torch.eye(32)
     model.config = SimpleNamespace(engram_layer_ids=(1, 2), image_token_id=999)
     model.layers = [
@@ -80,10 +81,10 @@ def test_overlapped_modes_publish_events_on_the_aux_stream(runtime, mode):
     model = make_model()
     model.prepare_engram = Mock()
 
-    def prepare(tokens, positions, padded, **kwargs):
+    def prepare(tokens, positions, lookback, query, slots, blocks, **kwargs):
         assert torch.npu.current_stream().name == "aux"
-        assert padded == 4 and kwargs["output_tokens"] == 4
-        assert kwargs["slot_mapping"] is None and kwargs["block_table"] is None
+        assert kwargs["output_tokens"] == 4
+        assert slots is None and blocks is None
 
     model.prepare_engram.side_effect = prepare
     first = model.prepare_engram_inputs(
@@ -119,7 +120,7 @@ def test_non_overlappable_modes_stay_synchronous(runtime, mode):
     model = make_model()
     model.prepare_engram = Mock(return_value=None)
 
-    def prepare(tokens, positions, padded, **kwargs):
+    def prepare(tokens, positions, lookback, query, slots, blocks, **kwargs):
         assert torch.npu.current_stream().name == "main"
         assert kwargs["ready_events"] is None and kwargs["mask_ready_event"] is None
 
@@ -160,7 +161,7 @@ def test_dummy_steps_zero_buffers_and_skip_hashing(runtime):
     for tensor in (*result["engram_lookups"].values(), result["engram_mask"]):
         assert not tensor[:4].any()
     # publish_mask records the mask first, then each layer's rows land.
-    assert calls == [("retain", "aux")] * 3 + [
+    assert calls == [("reuse", "main")] + [("retain", "aux")] * 3 + [
         ("record", result["engram_mask_ready_event"], "aux"),
     ] + [("record", event, "aux") for event in result["engram_pending"].values()]
 
@@ -217,8 +218,9 @@ def test_prime_registers_and_seeds_one_event_pair_per_bucket(runtime):
 
 
 def test_retire_resets_all_captured_events(runtime):
-    calls, context, _, context_available = runtime
+    calls, context, aux, context_available = runtime
     model = make_model()
+    model._engram_prepare_stream = aux
     context.cudagraph_runtime_mode = CUDAGraphMode.FULL
     context_available[0] = True
     v1 = model.prepare_engram_graph_inputs(4)
@@ -315,6 +317,7 @@ def test_state_gathers_lookback_and_overlaps_engram(runtime, monkeypatch):
     )
     model.prepare_engram_inputs = Mock(return_value={"engram_lookups": {"l": "buf"}})
     result = state.prepare_inputs(input_batch, req_states)
+    model.prepare_engram_inputs.assert_called_once()
     assert window[0].tolist() == [3, 3]
     assert result["lookback_token_ids"] is window
     assert result["engram_lookups"] == {"l": "buf"}
@@ -329,6 +332,7 @@ def test_state_dummy_capture_primes_and_refills_window(runtime, monkeypatch):
     model = make_model()
     state = make_state(model, monkeypatch)
     model.prime_engram_v2_graph_inputs = Mock(return_value={"engram_lookups": {}, "engram_mask": "mask"})
+    model.prepare_engram_graph_inputs = Mock(side_effect=AssertionError("duplicate parent preparation"))
     state.lookback_token_ids.fill_(3)
     result = state.prepare_dummy_inputs(2, 4)
     assert (state.lookback_token_ids == -1).all()

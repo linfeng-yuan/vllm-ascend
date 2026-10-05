@@ -211,6 +211,14 @@ class AscendDeepseekV41ForCausalLM(
     def prepare_engram_graph_inputs(self, padded_tokens=None):
         return self.language_model.prepare_engram_graph_inputs(padded_tokens)
 
+    def get_model_state_cls(self):
+        # The registry selects this wrapper even for text-only serving.
+        # MRV2 needs the language model's lookback history and graph events.
+        return self.language_model.get_model_state_cls()
+
+    def prime_engram_v2_graph_inputs(self, padded_tokens):
+        return self.language_model.prime_engram_v2_graph_inputs(padded_tokens)
+
     def retire_engram_lookups(self, *, reset_events=False):
         self.language_model.retire_engram_lookups(reset_events=reset_events)
 
@@ -223,6 +231,9 @@ class AscendDeepseekV41ForCausalLM(
         query_start_loc=None,
         slot_mapping=None,
         block_table=None,
+        *,
+        force_dummy=False,
+        cg_mode=None,
     ):
         return self.language_model.prepare_engram_inputs(
             input_ids,
@@ -232,6 +243,8 @@ class AscendDeepseekV41ForCausalLM(
             query_start_loc,
             slot_mapping,
             block_table,
+            force_dummy=force_dummy,
+            cg_mode=cg_mode,
         )
 
     @property

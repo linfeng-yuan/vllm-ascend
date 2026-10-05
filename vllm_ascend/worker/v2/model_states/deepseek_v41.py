@@ -103,8 +103,8 @@ class AscendDeepseekV41ModelState(AscendModelState):
             ubatch_idx=ubatch_idx,
         )
 
-    def prepare_inputs(self, input_batch: AscendInputBatch, req_states) -> dict[str, torch.Tensor | None]:
-        model_inputs = super().prepare_inputs(input_batch, req_states)
+    def prepare_engram_inputs(self, input_batch: AscendInputBatch, req_states) -> dict[str, Any]:
+        model_inputs: dict[str, Any] = {}
         window = self.lookback_token_ids
         if window is None:
             return model_inputs
@@ -140,8 +140,8 @@ class AscendDeepseekV41ModelState(AscendModelState):
             )
         return model_inputs
 
-    def prepare_dummy_inputs(self, num_reqs: int, num_tokens: int) -> dict[str, Any]:
-        model_inputs = super().prepare_dummy_inputs(num_reqs, num_tokens)
+    def prepare_engram_dummy_inputs(self, num_reqs: int, num_tokens: int) -> dict[str, Any]:
+        model_inputs: dict[str, Any] = {}
         window = self.lookback_token_ids
         if window is not None:
             # The captured graph reads this buffer; replays refill it in place.
