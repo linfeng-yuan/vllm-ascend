@@ -78,3 +78,9 @@ def test_wrapper_primes_the_same_graph_bucket_and_retires(registered_wrapper):
     registered_wrapper.language_model.prime_engram_v2_graph_inputs.assert_called_once_with(96)
     registered_wrapper.retire_engram_lookups(reset_events=True)
     registered_wrapper.language_model.retire_engram_lookups.assert_called_once_with(reset_events=True)
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_registered_wrapper_forwards_graph_producer_capability(registered_wrapper, enabled):
+    registered_wrapper.language_model.supports_engram_graph_producer = enabled
+    assert registered_wrapper.supports_engram_graph_producer is enabled

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import typing
 from collections.abc import Callable, Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -1081,6 +1082,8 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         # context, so it keys by the padded token count (the FULL graph bucket).
         self._engram_graph_events = {}
         self._engram_prepare_stream = None
+        self._engram_capture_stream = None
+        self._engram_capture_events = None
         self._engram_overlap_enabled = get_ascend_config().multistream_engram_overlap
         self._engram_max_tokens = max(
             vllm_config.scheduler_config.max_num_batched_tokens,
@@ -1126,6 +1129,7 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         output_tokens=None,
         mask_output_buffer=None,
         mask_ready_event=None,
+        valid_token_count=None,
     ):
         """Hash on device with upstream NgramHashState, then look up head shards.
 
@@ -1179,6 +1183,11 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             image_token_id = config.image_token_id
             image_pad_token_id = getattr(config, "image_pad_token_id", image_token_id + 1)
             dead = engram_dead_mask(input_ids, image_token_id, image_pad_token_id)
+            if valid_token_count is not None:
+                # FULL replay has a static token bucket. Request padding and
+                # idle DP steps must not read real table entries. This device
+                # count changes on replay; never specialize on capture dummy.
+                dead = dead | (torch.arange(input_ids.shape[0], device=device) >= valid_token_count)
             # Publish the keep mask before hashing and table communication.
             mask = ~dead
             publish_mask()
@@ -1253,6 +1262,70 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             CUDAGraphMode.NONE,
             CUDAGraphMode.FULL,
         )
+
+    def can_capture_engram_producer(self) -> bool:
+        """MRV2 slotless, local/shared tables need no graph-side collectives."""
+        return (
+            self.has_engram
+            and self._engram_overlap_enabled
+            and self.engram_hash is not None
+            and not self.engram_hash.use_slot_cache
+            and not self.use_sequence_parallel
+            and get_pp_group().world_size == 1
+            and all(
+                self.layers[layer].engram.embed_tokens.dp_size == 1
+                and self.layers[layer].engram.embed_tokens.tp_size == 1
+                for layer in self.config.engram_layer_ids
+            )
+        )
+
+    @contextmanager
+    def captured_engram_inputs(self, input_ids, positions, lookback_token_ids, query_start_loc, valid_token_count):
+        """Capture producer, consumer waits and stream join in the same graph.
+
+        Unlike the graph-external protocol, replay only stages fixed-address
+        request coordinates; Python does not submit hashing/lookup before the
+        main graph. Eager and unsupported parallel layouts keep their existing
+        preparation path. Both streams are joined before any buffer reuse.
+        """
+        buffers, mask_buffer = self._get_engram_input_buffers()
+        num_tokens = positions.shape[0]
+        if not num_tokens <= self._engram_max_tokens:
+            raise ValueError("Engram token count exceeds the output buffer capacity")
+        if self._engram_capture_stream is None:
+            self._engram_capture_stream = torch.npu.Stream(device=positions.device)
+            self._engram_capture_events = (
+                torch.npu.Event(),
+                {layer: torch.npu.Event() for layer in self.config.engram_layer_ids},
+            )
+        stream = self._engram_capture_stream
+        mask_ready, events = self._engram_capture_events
+        main = torch.npu.current_stream()
+        stream.wait_stream(main)
+        try:
+            with torch.npu.stream(stream):
+                self.prepare_engram(
+                    input_ids,
+                    positions,
+                    lookback_token_ids,
+                    query_start_loc,
+                    output_buffers=buffers,
+                    ready_events=events,
+                    output_tokens=num_tokens,
+                    mask_output_buffer=mask_buffer,
+                    mask_ready_event=mask_ready,
+                    valid_token_count=valid_token_count,
+                )
+            yield {
+                "engram_lookups": buffers,
+                "engram_mask": mask_buffer,
+                "engram_pending": events,
+                "engram_mask_ready_event": mask_ready,
+            }
+        finally:
+            # Also join if a producer/consumer raises or skips an Engram layer.
+            # On capture this closes the auxiliary branch inside the graph.
+            main.wait_stream(stream)
 
     def retire_engram_lookups(self, *, reset_events=False):
         """Join preparation before input reuse, including skipped consumers."""
@@ -1460,8 +1533,9 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             engram_pending = None
             engram_graph_events = False
             engram_mask_ready_event = None
-        if engram_mask_ready_event is not None:
+        if use_sequence_parallel and engram_mask_ready_event is not None:
             AscendParallelEngramEmbedding.wait_lookup(engram_mask_ready_event, external=engram_graph_events)
+            engram_mask_ready_event = None
         # Slice capacity-sized graph buffers before SP splits the token axis.
         token_mask = token_mask[:full_num_tokens]
         lookups = {layer_idx: lookup[:full_num_tokens] for layer_idx, lookup in lookups.items()}
@@ -1490,6 +1564,12 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
                     aux_hidden_state = sp_all_gather(aux_hidden_state)[:full_num_tokens]
                 aux_hidden_states.append(aux_hidden_state)
             if layer.engram is not None and token_mask.numel():
+                # Without SP the earlier mask slices are views. Delay the wait
+                # until the first actual consumer so early layers can overlap
+                # hash/lookup production, rather than blocking at graph entry.
+                if engram_mask_ready_event is not None:
+                    AscendParallelEngramEmbedding.wait_lookup(engram_mask_ready_event, external=engram_graph_events)
+                    engram_mask_ready_event = None
                 if engram_pending is not None and layer.layer_idx in engram_pending:
                     AscendParallelEngramEmbedding.wait_lookup(
                         engram_pending[layer.layer_idx],
@@ -1615,6 +1695,10 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
 
         return AscendDeepseekV41ModelState
 
+    @property
+    def supports_engram_graph_producer(self) -> bool:
+        return self.model.can_capture_engram_producer()
+
     def forward(
         self,
         input_ids,
@@ -1627,7 +1711,21 @@ class AscendDeepseekV41LLMForCausalLM(nn.Module, DeepseekV41MixtureOfExperts, Su
         engram_graph_events=False,
         lookback_token_ids=None,
         engram_mask_ready_event=None,
+        engram_query_start_loc=None,
+        engram_valid_token_count=None,
     ):
+        if engram_query_start_loc is not None:
+            with self.model.captured_engram_inputs(
+                input_ids, positions, lookback_token_ids, engram_query_start_loc, engram_valid_token_count
+            ) as graph_inputs:
+                return self.model(
+                    input_ids,
+                    positions,
+                    intermediate_tensors,
+                    inputs_embeds,
+                    lookback_token_ids=lookback_token_ids,
+                    **graph_inputs,
+                )
         return self.model(
             input_ids,
             positions,

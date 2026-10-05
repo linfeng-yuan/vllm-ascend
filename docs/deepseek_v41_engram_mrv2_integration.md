@@ -175,7 +175,8 @@ so these gap sizes are not unprofiled latency estimates.
 A future optimization needs a separately validated producer/capture scheduling
 design (for example graph-side production with stable device inputs and
 consumer-local dependencies), retaining request lookback, dummy steps and
-async buffer-reuse safety. That redesign is not implemented in this refresh.
+async buffer-reuse safety. That redesign was not implemented atb4764709d;
+the graph-side follow-up below supersedes this implementation status.
 Keep PR #14 Draft; do not enable Engram overlap by default or call it a
 performance-qualified release based on this test.
 
@@ -190,3 +191,120 @@ Remote stage:
 - `perf_{off,on}_warm{1,2}/summary.json`, request records and metrics.
 - `profile_off_analysis.json`, `profile_on_analysis.json`,
   `on_graph_gap.json`, `profiles/{off,on}/dp0_*_ascend_pt`.
+
+## Graph-side producer experiment, October 6
+
+This follow-up replaces graph-external production only for MRV2 FULL replay,
+slotless hashing, PP1, no sequence parallelism, and local/DP-shared tables
+with table TP/DP size1. The existing overlap setting still controls activation.
+Other layouts and eager execution retain their previous preparation path.
+KV layout, operator packages and dependencies are unchanged.
+
+Fixed-address query coordinates, history and a device valid-token count are
+staged before replay. Hashing and UVA lookup run on an auxiliary stream inside
+the same capture as the model. Main-stream waits occur at the first mask
+consumer and each lookup consumer, followed by a graph-local stream join.
+The device count handles idle DP steps and padded buckets without baking
+capture-time dummy values into replay. The coordinate buffer is separate
+from FIA's extra padding row. No graph-external producer or ExternalEvent
+submission is needed on this guarded route.
+
+Validation uses the same 133.108=P / 133.110=D 1P1D configuration above:
+Engram ON, D overlap ON, P eager/overlap OFF, async scheduling, MRV2,
+block128, RecomputeScheduler and DSpark graph decoding, real acceptance and
+routing. Both nodes have byte-identical production Python files from
+`/vllm-workspace/vllm-ascend-pr14-graphproducer-1006`.
+
+### Functional and quality results
+
+- 153 focused unit tests pass. Three NPU tests pass, including actual UVA
+  lookup across graph buckets96/192, changed active lengths, repeated idle
+  steps and buffer reuse. The producer scheduling test stubs hashing;
+  full-model runs below exercise the real hash implementation.
+- Exact-answer direct P/D/proxy smoke:14/14.
+- GSM8K:1282/1319 (97.19%),40.96s, zero API errors/empty outputs/retries,
+  two length-truncated outputs at4096 tokens. This is the custom-script
+  evaluation, not AIS Bench's official GSM8K evaluator.
+- AIS Bench GPQA Diamond:180/198 (90.91%),198 unique successes,100% answer
+  extraction,558.33s. Identical historical prompt/settings: concurrency200,
+  thinking=true, temperature1, top_p1, maximum128000 output tokens.
+  The complete isolated D counter delta is198 stop, zero length/error/abort/
+  repetition. No other requests or profiling overlapped this evaluation.
+- Full output scan finds no replacement characters, unexpected controls,
+  or long consecutive lexical loops. All198 final answers are nonempty and
+  terminate in the requested answer format. Two new strict heuristic flags
+  are question-option repetition in reasoning (id7) and table-alignment
+  spaces (id186), not corrupt bytes or endless repeated output.
+- Reviewed all18 wrong final answers with questions, and beginning/middle/
+  ending excerpts of the10 longest outputs. Reasoning can revisit hypotheses
+  excessively. In particular id147 produces69380 tokens and eventually
+  ignores the fluorine-compound constraint, yielding a wrong answer; its
+  baseline answer was correct at44869 tokens. Do not call this flawless
+  reasoning or infer absence of cognitive degradation from the total score.
+- Versus the matched baseline, six answers change correct-to-wrong and six
+  wrong-to-correct. Median output length decreases1780.5 to1597 tokens but
+  maximum increases44869 to69380. Temperature1 and a single paired run do
+  not establish numerical equivalence or attribute these changes to a race.
+
+GPQA artifacts on141.62:
+`/mnt/share/y00882530/dsv4_1/pr14_refreshed_1005/gpqa_c200/graphproducer_outputs/20261006_012509/`.
+The parent workspace has `deployment/pr14_refreshed_1005/gpqa_graphproducer_results/`,
+including predictions, audit, token lengths, matched comparison and review
+exports. `graphproducer_gpqa_metrics.json` retains finish-counter deltas.
+
+### Fixed-length timing, separate from profiler
+
+Same prompts/hashes and workload as the previous A/B, zero cached tokens,
+256/256 successes per round. These are historical paired comparisons,
+not a randomized interleaved experiment.
+
+| Round | Old ON output tokens/s | Graph producer output tokens/s | Old ON mean TPOT | Graph producer mean TPOT |
+| --- | --- | --- | --- | --- |
+| 1 | 10217.42 | 9504.48 | 4.022 ms | 3.806 ms |
+| 2 | 10211.59 | 10388.15 | 3.999 ms | 3.820 ms |
+
+Mean TPOT improves5.37%/4.49%, but aggregate output throughput changes
+-6.98%/+1.73%. Candidate TTFT is7.748/6.587s; the first round is again slower
+in prefill/startup. Do not claim a stable end-to-end throughput improvement.
+Compared with the warmed OFF round2, candidate round2 TPOT improves2.94%.
+
+### Time-axis evidence: real overlap, not a99% network speedup
+
+A separate2-second capture starts at100 running requests and10367 generated
+tokens; all128 profiling requests complete without errors. Both profile
+control calls return200. The same JSON interval analysis used for OFF/ON
+excludes communication, metadata, waits and copies from peer compute.
+
+DP0 sample:
+
+| Producer | Calls | Stream | Model id | Median duration | Time overlapping other compute |
+| --- | --- | --- | --- | --- | --- |
+| `_hash_ids_kernel` | 63 | 569 | 32 | 26.477 us | 99.24% |
+| `_engram_host_uva_gather_dequant_kernel` | 126 | 569 | 32 | 42.749 us | 99.82% |
+
+Peer operations include `aclnnQuantMatmulV5_QuantBatchMatmulV3_QuantBatchMatmulV3`
+and `InplacePartialRotaryMul` on stream571, also model32. Unlike the old ON
+producer's model id4294967295 and zero overlap, these operations execute
+inside the target graph and overlap real model compute. No Gloo events were
+found in this sample. The percentages describe observed producer duration
+overlap on DP0, not all ranks/workloads, eliminated critical-path latency,
+or an end-to-end99% speedup. The timing table is the performance evidence.
+
+Evidence under the remote stage:
+
+- `perf_graphproducer_warm{1,2}/summary.json`, full request and metric records.
+- `profile_graphproducer_control.json`, `profile_graphproducer_analysis.json`.
+- `profiles/graphproducer/dp0_pp0_tp0_dcp0_ep0_rank0_1236_20261006013614317_ascend_pt/ASCEND_PROFILER_OUTPUT/trace_view.json`.
+
+Keep the PR in Draft pending review of the guarded graph scheduling change
+and output-quality caveats. Do not advertise stable whole-service throughput
+gain or blanket precision equivalence from these runs.
+
+### Startup incident
+
+The first D launch failed before DP7 capture: Mooncake/ADXL could not read
+the device EID (`dcmiv2_get_eid_list_by_urma_dev_index`, return-8005), leaving
+other ranks waiting. Preserve
+`logs/d_graphproducer_attempt1_adxl_eid_failure.log`. Restarting only the
+isolated D container with the same configuration succeeded. The underlying
+ADXL failure was not diagnosed or claimed fixed; no driver changes were made.

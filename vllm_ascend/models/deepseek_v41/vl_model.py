@@ -252,6 +252,10 @@ class AscendDeepseekV41ForCausalLM(
         """What the runner sizes the prompt lookback buffer from."""
         return self.language_model.token_lookback_depth
 
+    @property
+    def supports_engram_graph_producer(self) -> bool:
+        return self.language_model.supports_engram_graph_producer
+
     def forward(
         self,
         input_ids: torch.Tensor,

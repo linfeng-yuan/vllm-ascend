@@ -62,6 +62,7 @@ def _make_model(codes, scales, vocab, heads, width, capacity):
     model._engram_input_buffers, model._engram_max_tokens = None, capacity
     model._engram_graph_events = {}
     model._engram_prepare_stream = None
+    model._engram_capture_stream, model._engram_capture_events = None, None
     model._engram_overlap_enabled = True
     model.engram_rotation = torch.eye(32, device="npu")
     return model, host_codes, host_scales
@@ -149,6 +150,67 @@ def test_engram_v2_bucket_events_refresh_rows_dummy_steps_and_failures():
                 oracle[token] = (codes[row].float() * 0.25).bfloat16()
             for layer in (1, 14):
                 assert torch.equal(outputs[96][layer].cpu(), oracle.flatten(1))
+    finally:
+        torch.npu.synchronize()
+        host_codes.close()
+        host_scales.close()
+
+
+@torch.inference_mode()
+def test_engram_graph_side_producer_replays_without_python_submission():
+    """Actual UVA lookup/graph events; stub hash isolates capture scheduling."""
+    torch.npu.set_device(0)
+    init_device_properties_triton()
+    capacity, heads, width, vocab = 192, 3, 256, 101
+    codes = ((torch.arange(vocab * width).view(vocab, width) * 7) % 251 - 125).to(torch.int8)
+    scales = torch.ones(vocab, width // 32) * 0.25
+    model, host_codes, host_scales = _make_model(codes, scales, vocab, heads, width, capacity)
+    ids = torch.zeros(capacity, dtype=torch.int32, device="npu")
+    positions = torch.arange(capacity, device="npu")
+    history = torch.full((4, 2), -1, dtype=torch.int32, device="npu")
+    query = torch.zeros(5, dtype=torch.int32, device="npu")
+    count = torch.zeros(1, dtype=torch.int32, device="npu")
+    graphs, outputs = {}, {}
+    try:
+        with patch("vllm_ascend.models.deepseek_v41.model.gather_engram_hashes", lambda ids, **kwargs: ids):
+
+            def forward(size):
+                with model.captured_engram_inputs(ids[:size], positions[:size], history, query, count) as binding:
+                    # Main-stream work before the first Engram consumer.
+                    prefix = positions[:size].float() + 1
+                    AscendParallelEngramEmbedding.wait_lookup(binding["engram_mask_ready_event"])
+                    result = {}
+                    for layer in (1, 14):
+                        AscendParallelEngramEmbedding.wait_lookup(binding["engram_pending"][layer])
+                        result[layer] = torch.where(
+                            binding["engram_mask"][:size, None], binding["engram_lookups"][layer][:size], 0
+                        )
+                    return result, prefix
+
+            for size in (96, 192):
+                forward(size)
+                torch.npu.synchronize()
+                graph = torch.npu.NPUGraph()
+                with torch.npu.graph(graph):
+                    outputs[size], _ = forward(size)
+                graphs[size] = graph
+            # No Python producer is allowed after capture. Replay changes
+            # lengths/buckets and includes consecutive idle ranks/short reuse.
+            with patch.object(model, "prepare_engram", side_effect=AssertionError("external producer on replay")):
+                plan = [(192, 168), (96, 1), (192, 0), (96, 0), (96, 96), (192, 17)] * 3
+                for phase, (size, active) in enumerate(plan):
+                    cpu_ids = (torch.arange(capacity) + phase * 11) % vocab
+                    ids.copy_(cpu_ids)
+                    count.fill_(active)
+                    query.fill_(active)
+                    query[0] = 0
+                    graphs[size].replay()
+                    expected = torch.zeros((size, heads, width), dtype=torch.bfloat16)
+                    for token, row in enumerate(cpu_ids[:active].tolist()):
+                        expected[token] = (codes[row].float() * 0.25).bfloat16()
+                    for layer in (1, 14):
+                        torch.testing.assert_close(outputs[size][layer].cpu(), expected.flatten(1), rtol=0, atol=0)
+            assert model._engram_graph_events == {}  # no ExternalEvents
     finally:
         torch.npu.synchronize()
         host_codes.close()

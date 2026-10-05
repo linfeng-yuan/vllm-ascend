@@ -69,6 +69,8 @@ class AscendDeepseekV41ModelState(AscendModelState):
     ``DeepseekV41Model``).
     """
 
+    _engram_graph_inputs: dict[str, torch.Tensor] | None = None
+
     def __init__(self, vllm_config, model, encoder_cache, device):
         super().__init__(vllm_config, model, encoder_cache, device)
         depth = model.token_lookback_depth
@@ -77,6 +79,13 @@ class AscendDeepseekV41ModelState(AscendModelState):
         if depth > 0:
             # Persistent so a captured graph can read it on replay.
             self.lookback_token_ids = torch.full((self.max_num_reqs, depth), -1, dtype=torch.int32, device=device)
+            if getattr(model, "supports_engram_graph_producer", False):
+                self._engram_graph_inputs = {
+                    # Separate from FIA's max_reqs+2 query buffer: its padding
+                    # row must not become a real Engram request/history row.
+                    "engram_query_start_loc": torch.zeros(self.max_num_reqs + 1, dtype=torch.int32, device=device),
+                    "engram_valid_token_count": torch.zeros(1, dtype=torch.int32, device=device),
+                }
 
     def prepare_attn(
         self,
@@ -121,6 +130,18 @@ class AscendDeepseekV41ModelState(AscendModelState):
             BLOCK_DEPTH=triton.next_power_of_2(depth),
         )
         model_inputs["lookback_token_ids"] = window
+        if self._engram_graph_inputs is not None and self._cg_mode == CUDAGraphMode.FULL:
+            graph_inputs = self._engram_graph_inputs
+            query = graph_inputs["engram_query_start_loc"]
+            valid_tokens = 0 if input_batch.is_dummy else input_batch.num_tokens
+            query.fill_(valid_tokens)
+            if not input_batch.is_dummy:
+                query[: input_batch.num_reqs + 1].copy_(input_batch.query_start_loc[: input_batch.num_reqs + 1])
+            graph_inputs["engram_valid_token_count"].fill_(valid_tokens)
+            model_inputs.update(graph_inputs)
+            # FULL replay runs its own producers. No Python-side hash/lookup
+            # and no ExternalEvent records may precede it on this route.
+            return model_inputs
         prepare_engram = getattr(self.model, "prepare_engram_inputs", None)
         if prepare_engram is not None:
             # Launch hash/lookup now so it overlaps the upcoming forward; the
@@ -147,6 +168,11 @@ class AscendDeepseekV41ModelState(AscendModelState):
             # The captured graph reads this buffer; replays refill it in place.
             window.fill_(-1)
             model_inputs["lookback_token_ids"] = window
+            if self._engram_graph_inputs is not None:
+                for buffer in self._engram_graph_inputs.values():
+                    buffer.zero_()
+                model_inputs.update(self._engram_graph_inputs)
+                return model_inputs
             prime_engram = getattr(self.model, "prime_engram_v2_graph_inputs", None)
             if prime_engram is not None:
                 model_inputs.update(prime_engram(num_tokens))
