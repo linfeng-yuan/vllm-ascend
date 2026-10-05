@@ -48,37 +48,97 @@ are introduced by the integration fix.
 
 ## Validation status
 
-On refreshed code `b4764709d`, 140 targeted unit tests pass, including the real
-registry contract and metadata/DP coordination regressions. The NPU lookback,
-one-card UVA replay and two-card DP-shared-table graph tests pass (3 total).
-These are component checks, not proof of full-model overlap or accuracy.
-Fresh full-weight 1P1D OFF/ON regressions and profiles are in progress on
-133.108/133.110; results below describe earlier validation unless noted.
+Refreshed runtime code: `b4764709d`, based on latest 1005 `32284fe0c`
+plus author's PR #9 `5b1936cc0`. Both P/D use identical repaired source.
 
-The four missing wrapper contracts fail before the fix. After the fix, 91
-targeted unit tests pass across `test_engram_multistream.py`,
-`test_engram_v2_model_state.py`, `test_engram_registered_v2_contract.py` and
-`test_model_runner_v2.py`. Ruff and `git diff --check` pass. Full `format.sh ci`
-could not run because the test container does not have `pre-commit`; no runtime
-dependencies were upgraded to bypass that limitation.
+- 140 targeted unit tests pass, including actual registry/state selection,
+  single preparation, metadata activation and scoped DP coordination.
+- NPU lookback gather, one-card UVA replay and two-card DP shared-table graph
+  replay pass (3 tests). Small-table graph tests use a stub hash.
+- Local Ruff and git diff whitespace checks pass. Full format CI remains
+  unavailable because the container lacks pre-commit; dependencies unchanged.
 
-On Ascend hardware, the lookback gather and one-card UVA graph replay tests
-pass (2 tests), as does the two-card DP-shared-table graph replay test (1 test).
-These hardware tests ran with the existing PR #10 stack plus the same wrapper
-fix; hash/lookup graph tests use a small synthetic table and a stub hash. They
-do not substitute for full-weight end-to-end accuracy or overlap measurements.
-The standalone lookback test imports the upstream speculator before model
-state modules, matching the runner startup import order.
+### Full-weight 1P1D accuracy
 
-Full-model accuracy and performance qualification is tracked in the PR. The
-previous PR #9 switch-on/off profile was collected before this fix: hash and
-UVA lookup stayed on the same stream, with zero measured compute overlap.
-Those results must not be presented as evidence that Engram overlap works.
-Likewise, previous GSM8K scores do not qualify the repaired history path.
+P=133.108, D=133.110, DP8/TP1/EP8 each. Both have Engram CPU offload and DP
+shared memory enabled, MRV2, async scheduling, block128 and DSpark5.
+P remains eager with Engram overlap OFF and prefix caching ON. D uses
+FULL_DECODE_ONLY with graph-enabled DSpark, RecomputeScheduler and prefix
+caching OFF. Only D's `multistream_engram_overlap` differs between A/B.
+Merged #10 metadata/QW and #11 coordination optimizations are present.
+No synthetic acceptance, forced EPLB, dependency or KV-layout changes.
 
-For an overlap A/B comparison, both sides must contain this correctness fix;
-only `multistream_engram_overlap` should differ. Keep CPU offload,
-`dp_shared_memory`, MRV2, async scheduling, DSpark graph mode and block size 128
-identical. Use real routing and acceptance, not synthetic acceptance or forced
-EPLB. If testing with PR #10's metadata/QW stack, report that explicitly rather
-than describing it as the clean PR branch.
+Both variants pass all 14 direct-P/direct-D/proxy/concurrent smoke requests.
+
+| D overlap | GSM8K correct/1319 | Score | Duration | API/empty/retries | Length |
+| --- | --- | --- | --- | --- | --- |
+| OFF | 1281/1319 | 97.119% | 26.28 s | 0/0/0 | 0 |
+| ON | 1278/1319 | 96.892% | 37.49 s | 0/0/0 | 2 |
+| ON repeat | 1281/1319 | 97.119% | 35.38 s | 0/0/0 | 2 |
+
+Custom-script evaluation, not AIS Bench: concurrency200, max_tokens4096,
+temperature0, top_p1, thinking=false, historical answer:$ANSWER prompt.
+A repeat reaches the OFF score, so the first three-question difference is
+not a demonstrated stable regression. This is not proof of numerical
+equivalence: truncations remain, and GPQA/long-context/multimodal coverage
+is not included. GSM duration is not a controlled performance measurement
+because output lengths and cache state differ.
+
+### Timed A/B, profiler disabled
+
+Fixed-seed random valid-text-token prompts; 4096 input, exactly1024 output,
+ignore_eos, concurrency128, 256 timed requests after16 warmups per round.
+Each pair uses identical prompt hashes and independent cache_salt.
+All four rounds complete256/256, zero errors, zero reported cached tokens.
+Acceptance and routing are real; this fixed-output microbenchmark does not
+represent arbitrary user workloads.
+
+| Round | OFF output tokens/s | ON output tokens/s | Change | OFF mean TPOT | ON mean TPOT |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 9112.01 | 10217.42 | +12.13% | 3.879 ms | 4.022 ms |
+| 2 | 10260.69 | 10211.59 | -0.48% | 3.936 ms | 3.999 ms |
+
+These results do not establish a stable speedup. OFF round1 has larger TTFT
+(8.264 s versus6.594 s in round2), while ON rounds are6.579/6.563 s.
+The ordering/warmup variation is a confound, not evidence of an Engram
+benefit. Mean TPOT worsens by3.70%/1.62% in the corresponding ON rounds.
+Do not advertise the aggregate throughput increase as an optimization win.
+
+### Profile: auxiliary stream works, overlap does not
+
+Each variant has a separate2-second capture, started at100 running requests,
+then all128 profile requests drain successfully. Time-axis JSON was analyzed;
+profiler-on throughput is not used above. Evidence is DP0 for this workload.
+
+- OFF:62 hash calls and124 UVA lookups, stream61; compute overlap0%.
+- ON:61 hash calls and122 UVA lookups, auxiliary stream44; compute overlap0%.
+- Neither sample contains Gloo allreduce events.
+- ON producers have model id4294967295 (outside the graph), while the target
+  replay has model id32. In all61 paired samples both lookups finish before
+  MODEL_EXECUTE; the gap from last lookup completion to graph launch is
+  at least176.75 us, median206.5 us. Hash start to graph launch median623 us.
+
+The wrapper fix makes the PR #9 auxiliary producer reachable, but it still
+submits hash/lookup from Python before model replay. Moving work to another
+stream alone does not ensure overlap: in this observed execution the producer
+is already finished before target compute starts. Profiler adds host overhead,
+so these gap sizes are not unprofiled latency estimates.
+
+A future optimization needs a separately validated producer/capture scheduling
+design (for example graph-side production with stable device inputs and
+consumer-local dependencies), retaining request lookback, dummy steps and
+async buffer-reuse safety. That redesign is not implemented in this refresh.
+Keep PR #14 Draft; do not enable Engram overlap by default or call it a
+performance-qualified release based on this test.
+
+### Artifacts
+
+Remote stage:
+`/mnt/share/y00882530/dsv4_1/pr14_refreshed_1005`
+
+- `run_p.sh`, `run_d_off.sh`, `run_d_on.sh`, `run_tests.sh`.
+- `logs/ut.log`, `logs/smoke_off.log`, `logs/smoke_on.log`.
+- `logs/gsm8k_off.log`, `logs/gsm8k_on.log`, `logs/gsm8k_on_repeat.log`.
+- `perf_{off,on}_warm{1,2}/summary.json`, request records and metrics.
+- `profile_off_analysis.json`, `profile_on_analysis.json`,
+  `on_graph_gap.json`, `profiles/{off,on}/dp0_*_ascend_pt`.
