@@ -31,6 +31,7 @@ from vllm.sequence import IntermediateTensors
 from vllm.utils.torch_utils import async_tensor_h2d as async_copy_to_gpu
 from vllm.v1.core.sched.output import SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig
+from vllm.v1.worker.dp_utils import skip_dp_coordination
 from vllm.v1.worker.gpu import model_runner as vllm_model_runner
 from vllm.v1.worker.gpu.cudagraph_utils import BatchExecutionDescriptor
 from vllm.v1.worker.gpu.eplb_utils import step_eplb_after
@@ -67,6 +68,7 @@ from vllm_ascend.utils import (
     is_pd_decode_recompute_scheduler_enabled,
     lmhead_tp_enable,
     set_potential_max_tokens,
+    should_skip_allreduce_across_dp_group,
 )
 from vllm_ascend.worker.utils import disable_compilation
 from vllm_ascend.worker.v2.aclgraph_utils import ModelAclGraphManager
@@ -376,15 +378,21 @@ class NPUModelRunner(GPUModelRunner):
             get_kv_transfer_group().handle_preemptions(kv_connector_metadata)
 
         self.model_state.kvpp_is_dummy_run = dummy_run or is_profile
-        output = super().execute_model(
-            scheduler_output,
-            intermediate_tensors=intermediate_tensors,
-            dummy_run=dummy_run,
-            skip_attn_for_dummy_run=skip_attn_for_dummy_run,
-            is_profile=is_profile,
-            context_len=context_len,
-            valid_dummy_state_slots=valid_dummy_state_slots,
+        dp_coordination_context = (
+            skip_dp_coordination()
+            if should_skip_allreduce_across_dp_group(self.vllm_config)
+            else nullcontext()
         )
+        with dp_coordination_context:
+            output = super().execute_model(
+                scheduler_output,
+                intermediate_tensors=intermediate_tensors,
+                dummy_run=dummy_run,
+                skip_attn_for_dummy_run=skip_attn_for_dummy_run,
+                is_profile=is_profile,
+                context_len=context_len,
+                valid_dummy_state_slots=valid_dummy_state_slots,
+            )
         self.model_state.kvpp_is_dummy_run = False
         self.kvpp.complete_forward()
 
