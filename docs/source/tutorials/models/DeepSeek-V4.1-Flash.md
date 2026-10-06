@@ -741,6 +741,30 @@ The response must contain a model entry whose `id` matches the configured
 `--served-model-name`: `dsv41` for the A3 examples and `deepseek-v41` for the
 retained A2 example.
 
+### 5.4 Experimental Engram Preparation Overlap
+
+Enable with `--additional-config '{"multistream_engram_overlap":true}'`
+(default: `false`). With model runner V1, eager and FULL decode execution
+submit hash/cache updates, table lookups, the existing DP hash AllGather,
+DP row AllToAll, and TP head AllGather on one auxiliary stream. Each Engram
+layer waits for its complete rows before any sequence-parallel row copy.
+Shared DP tables skip the DP exchanges as before. PIECEWISE execution keeps
+synchronous preparation.
+
+FULL graphs reuse fixed row/mask buffers and descriptor-specific external
+events. Preparation stays outside the captured graph. This implementation
+adapts [PR #6](https://github.com/linfeng-yuan/vllm-ascend/pull/6) to the native
+A5 offload and AllToAll paths in the current branch. Its numerical accuracy,
+collective scheduling, and performance require fresh NPU validation; the
+reference PR's historical measurements do not validate this revision.
+
+Run the Engram multistream tests under `tests/e2e/pull_request/one_card/`,
+`two_card/`, and `four_card/` for UVA graph replay and DP2/TP1, DP1/TP2, and
+DP2/TP2 communication. Before enabling for serving, compare OFF/ON accuracy
+and alternating warmed-up benchmarks with the same model, requests, and
+concurrency. Record TTFT, TPOT, throughput, and an NPU trace to distinguish
+actual device overlap from auxiliary-stream submission.
+
 ## 6 Functional Verification
 
 ### 6.1 Text Request
