@@ -69,6 +69,11 @@ class AscendDeepseekV41ModelState(AscendModelState):
     ``DeepseekV41Model``).
     """
 
+    # prepare_inputs submits engram itself with cg_mode and force_dummy; the
+    # base synchronous fallback must not run the chain a second time on the
+    # main stream (double hash/lookup work, no dummy-batch protection).
+    engram_inputs_managed_by_state = True
+
     def __init__(self, vllm_config, model, encoder_cache, device):
         super().__init__(vllm_config, model, encoder_cache, device)
         depth = model.token_lookback_depth
