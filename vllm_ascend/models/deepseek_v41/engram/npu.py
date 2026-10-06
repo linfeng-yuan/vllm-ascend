@@ -20,12 +20,10 @@ from vllm.logger import logger
 from vllm.triton_utils import tl, triton
 
 SCALE_GROUP = 32
-# Process several rows serially per CTA on the HOST_UVA path. A one-row CTA
-# grid can issue many unrelated host-memory gathers at once and contend with
-# latency-sensitive work on the vector cores. Grouping rows limits that burst
-# concurrency; tune against end-to-end latency because it can extend lookup
-# time when Engram is the only active workload.
-UVA_ROWS_PER_PROGRAM = 4
+# Cap HOST_UVA lookup parallelism so Engram leaves vector-core capacity for
+# latency-sensitive model work. The cap is a tuning point, not a hardware core
+# count: validate it against end-to-end latency on the target Ascend device.
+UVA_MAX_PROGRAMS = 16
 # A 384M row table overflows the 32 bit offset arithmetic a single Triton tile
 # can express, so the device address of every group of rows is published
 # separately.
@@ -357,8 +355,13 @@ def gather_dequantize_host_uva(
     if rows == 0:
         return output
     init_device_properties_triton()
+    # Group enough rows per CTA to keep the grid at or below the configured
+    # cap. The inner loop processes each row serially, bounding simultaneous
+    # random HOST_UVA gathers even when the request token count grows.
+    num_programs = min(rows, UVA_MAX_PROGRAMS)
+    rows_per_program = triton.cdiv(rows, num_programs)
     # The kernel widens loaded IDs to int64; no extra cast/copy is needed here.
-    _engram_host_uva_gather_dequant_kernel[(triton.cdiv(rows, UVA_ROWS_PER_PROGRAM),)](
+    _engram_host_uva_gather_dequant_kernel[(triton.cdiv(rows, rows_per_program),)](
         codes.ptrs,
         scales.ptrs if scales is not None else None,
         ids,
@@ -375,7 +378,7 @@ def gather_dequantize_host_uva(
         PAD_HEADS=pad_heads,
         QUANTIZED=scales is not None,
         MXFP8=codes.tensor.dtype == torch.float8_e4m3fn,
-        ROWS_PER_PROGRAM=UVA_ROWS_PER_PROGRAM,
+        ROWS_PER_PROGRAM=rows_per_program,
         num_warps=4,
     )
     return output
