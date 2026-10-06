@@ -1460,8 +1460,12 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             engram_pending = None
             engram_graph_events = False
             engram_mask_ready_event = None
-        if engram_mask_ready_event is not None:
-            AscendParallelEngramEmbedding.wait_lookup(engram_mask_ready_event, external=engram_graph_events)
+        # The producer publishes the keep mask before hashing and exchanges, so
+        # defer its wait to the mask's first data consumer (SP shard or the
+        # first engram layer). Waiting at the top of the forward would gate
+        # every leading layer instead of letting the whole preparation chain
+        # overlap with their compute.
+        mask_ready_waited = engram_mask_ready_event is None
         # Slice capacity-sized graph buffers before SP splits the token axis.
         token_mask = token_mask[:full_num_tokens]
         lookups = {layer_idx: lookup[:full_num_tokens] for layer_idx, lookup in lookups.items()}
@@ -1474,6 +1478,9 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
                 )
             hidden_states = sp_shard(hidden_states)
             input_ids = sp_shard(input_ids)
+            if not mask_ready_waited:
+                AscendParallelEngramEmbedding.wait_engram_event(engram_mask_ready_event, external=engram_graph_events)
+                mask_ready_waited = True
             token_mask = sp_shard(token_mask)
         hidden_states = hidden_states.unsqueeze(1).repeat(1, self.hc_mult, 1)
         pre_mix = hidden_states.new_zeros(hidden_states.shape[0], self.hc_mult, dtype=torch.float32)
@@ -1490,8 +1497,13 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
                     aux_hidden_state = sp_all_gather(aux_hidden_state)[:full_num_tokens]
                 aux_hidden_states.append(aux_hidden_state)
             if layer.engram is not None and token_mask.numel():
+                if not mask_ready_waited:
+                    AscendParallelEngramEmbedding.wait_engram_event(
+                        engram_mask_ready_event, external=engram_graph_events
+                    )
+                    mask_ready_waited = True
                 if engram_pending is not None and layer.layer_idx in engram_pending:
-                    AscendParallelEngramEmbedding.wait_lookup(
+                    AscendParallelEngramEmbedding.wait_engram_event(
                         engram_pending[layer.layer_idx],
                         external=engram_graph_events,
                     )

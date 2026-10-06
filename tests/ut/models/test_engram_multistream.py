@@ -90,9 +90,9 @@ def test_graph_events_are_reused_per_descriptor_and_primed_only_at_capture(runti
     for layer in (1, 2):
         assert first["engram_pending"][layer] is not second["engram_pending"][layer]
     event = first["engram_pending"][1]
-    embedding.AscendParallelEngramEmbedding.wait_lookup(event, external=True)
+    embedding.AscendParallelEngramEmbedding.wait_engram_event(event, external=True)
     assert calls[-2:] == [("wait", event, "main"), ("reset", event, "main")]
-    embedding.AscendParallelEngramEmbedding.wait_lookup(event)
+    embedding.AscendParallelEngramEmbedding.wait_engram_event(event)
     assert calls[-1] == ("wait_event", event)
 
 

@@ -85,10 +85,10 @@ def test_engram_v2_bucket_events_refresh_rows_dummy_steps_and_failures():
                 binding = model.prime_engram_v2_graph_inputs(size)
                 graph = torch.npu.NPUGraph()
                 with torch.npu.graph(graph):
-                    AscendParallelEngramEmbedding.wait_lookup(binding["engram_mask_ready_event"], True)
+                    AscendParallelEngramEmbedding.wait_engram_event(binding["engram_mask_ready_event"], True)
                     output = {}
                     for layer in (1, 14):
-                        AscendParallelEngramEmbedding.wait_lookup(binding["engram_pending"][layer], True)
+                        AscendParallelEngramEmbedding.wait_engram_event(binding["engram_pending"][layer], True)
                         output[layer] = torch.where(
                             binding["engram_mask"][:size, None],
                             binding["engram_lookups"][layer][:size],

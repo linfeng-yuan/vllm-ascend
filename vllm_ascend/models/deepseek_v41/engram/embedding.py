@@ -355,8 +355,8 @@ class AscendParallelEngramEmbedding(ParallelEngramEmbedding):
         return out[:, : self.n_hash_cols]
 
     @staticmethod
-    def wait_lookup(done, external: bool = False) -> None:
-        """Make the current stream wait for an asynchronous table lookup."""
+    def wait_engram_event(done, external: bool = False) -> None:
+        """Make the current stream wait for a producer event (mask or table)."""
         stream = torch.npu.current_stream()
         if external:
             done.wait(stream)

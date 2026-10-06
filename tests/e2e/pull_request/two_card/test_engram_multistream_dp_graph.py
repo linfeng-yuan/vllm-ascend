@@ -112,12 +112,12 @@ def _worker(rank, port, topology):
                 tp_input.fill_(rank + 1.0)
             graph = torch.npu.NPUGraph()
             with torch.npu.graph(graph):
-                AscendParallelEngramEmbedding.wait_lookup(binding["engram_mask_ready_event"], True)
+                AscendParallelEngramEmbedding.wait_engram_event(binding["engram_mask_ready_event"], True)
                 reduced = ep.all_reduce(ep_input)
                 tp_reduced = tp.all_reduce(tp_input) if tp_enabled else tp_input
                 outputs = {}
                 for layer in (1, 14):
-                    AscendParallelEngramEmbedding.wait_lookup(binding["engram_pending"][layer], True)
+                    AscendParallelEngramEmbedding.wait_engram_event(binding["engram_pending"][layer], True)
                     outputs[layer] = torch.where(
                         binding["engram_mask"][:bucket, None], binding["engram_lookups"][layer][:bucket], 0
                     )
@@ -170,9 +170,9 @@ def _worker(rank, port, topology):
                     query_start_loc=query,
                     block_table=block,
                 )
-            AscendParallelEngramEmbedding.wait_lookup(result["engram_mask_ready_event"], False)
+            AscendParallelEngramEmbedding.wait_engram_event(result["engram_mask_ready_event"], False)
             for slot, layer in enumerate((1, 14)):
-                AscendParallelEngramEmbedding.wait_lookup(result["engram_pending"][layer], False)
+                AscendParallelEngramEmbedding.wait_engram_event(result["engram_pending"][layer], False)
                 expected = _reference(ids_cpu[:, slot], codes, scales).flatten(1)
                 assert torch.equal(result["engram_lookups"][layer][:count].cpu(), expected)
         print(f"ENGRAM_MULTISTREAM_{topology.upper()}_GRAPH_12_EAGER_3_PASSED rank={rank}", flush=True)

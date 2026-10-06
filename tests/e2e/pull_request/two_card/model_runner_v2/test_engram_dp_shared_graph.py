@@ -92,10 +92,10 @@ def _worker(rank, port):
         binding = model.prime_engram_v2_graph_inputs(bucket)
         graph = torch.npu.NPUGraph()
         with torch.npu.graph(graph):
-            AscendParallelEngramEmbedding.wait_lookup(binding["engram_mask_ready_event"], True)
+            AscendParallelEngramEmbedding.wait_engram_event(binding["engram_mask_ready_event"], True)
             outputs = {}
             for layer in (1, 14):
-                AscendParallelEngramEmbedding.wait_lookup(binding["engram_pending"][layer], True)
+                AscendParallelEngramEmbedding.wait_engram_event(binding["engram_pending"][layer], True)
                 outputs[layer] = torch.where(
                     binding["engram_mask"][:bucket, None], binding["engram_lookups"][layer][:bucket], 0
                 )

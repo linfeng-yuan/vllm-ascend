@@ -77,10 +77,10 @@ def test_engram_external_events_refresh_rows_padding_and_empty_batches():
                 bindings = model.prepare_engram_graph_inputs(size)
                 graph = torch.npu.NPUGraph()
                 with torch.npu.graph(graph):
-                    AscendParallelEngramEmbedding.wait_lookup(bindings["engram_mask_ready_event"], True)
+                    AscendParallelEngramEmbedding.wait_engram_event(bindings["engram_mask_ready_event"], True)
                     output = {}
                     for layer in (1, 14):
-                        AscendParallelEngramEmbedding.wait_lookup(bindings["engram_pending"][layer], True)
+                        AscendParallelEngramEmbedding.wait_engram_event(bindings["engram_pending"][layer], True)
                         output[layer] = torch.where(
                             bindings["engram_mask"][:size, None],
                             bindings["engram_lookups"][layer][:size],
