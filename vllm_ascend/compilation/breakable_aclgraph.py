@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager, nullcontext
 from typing import Any
 
 import torch
@@ -26,6 +27,7 @@ from vllm.compilation.breakable_cudagraph import BreakableCUDAGraphWrapper
 from vllm.config import CUDAGraphMode, VllmConfig
 from vllm.forward_context import get_forward_context
 
+from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
 from vllm_ascend.compilation.acl_graph import (
     get_draft_graph_params,
@@ -33,6 +35,45 @@ from vllm_ascend.compilation.acl_graph import (
     get_graph_params,
     weak_ref_workspaces,
 )
+from vllm_ascend.utils import super_kernel_scope
+
+
+@contextmanager
+def _apply_super_kernel(capture: Any, enabled: bool):
+    """Apply Super Kernel to the graphs captured inside the block.
+
+    The breakable runner captures through ``Capture.capture_begin()`` /
+    ``capture_end()`` instead of ``torch.cuda.graph()``, so it never goes
+    through ``worker.v2.utils.torch_npu_graph_wrapper`` where the Super Kernel
+    pass is normally triggered. Without this, enabling ``enable_super_kernel``
+    silently produces an unoptimized graph whenever breakable graphs are used.
+
+    ``Capture`` opens a fresh segment (and therefore a fresh graph) at every
+    attention break, so every captured graph needs the pass -- not just the
+    first. ``Capture`` keeps no handle on the graphs it consumed, only their
+    replay closures, so collect them by wrapping ``_begin_segment``.
+    """
+    captured_graphs: list[Any] = []
+    begin_segment = capture._begin_segment
+
+    def record_begin_segment() -> None:
+        begin_segment()
+        graph = getattr(capture, "_current_graph", None)
+        if graph is not None:
+            captured_graphs.append(graph)
+
+    try:
+        capture._begin_segment = record_begin_segment
+        yield
+    finally:
+        capture._begin_segment = begin_segment
+        if enabled:
+            for graph in captured_graphs:
+                graph.super_kernel_optimize(
+                    optimize_options={
+                        "dcci_after_kernel_end": [".*"],
+                    },
+                )
 
 
 class BreakableACLGraphWrapper(BreakableCUDAGraphWrapper):
@@ -64,7 +105,16 @@ class BreakableACLGraphWrapper(BreakableCUDAGraphWrapper):
             # mutable graph parameters only while this flag is set.
             forward_context.capturing = True
 
-        output = super()._capture(entry, args, kwargs)
+        # The Super Kernel scope must stay open for the whole capture so the
+        # fused regions cover the modeled operators, and `super_kernel_optimize`
+        # must run once every graph of the capture has been closed.
+        enable_super_kernel = get_ascend_config().ascend_compilation_config.enable_super_kernel
+        capture = entry.capture
+        with (
+            super_kernel_scope("full_model", enable_super_kernel),
+            _apply_super_kernel(capture, enable_super_kernel) if capture is not None else nullcontext(),
+        ):
+            output = super()._capture(entry, args, kwargs)
 
         if is_full_capture:
             # Keep the same workspace lifetime contract as ACLGraphWrapper.

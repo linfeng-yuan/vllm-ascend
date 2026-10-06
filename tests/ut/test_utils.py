@@ -664,6 +664,33 @@ class TestUtils(TestBase):
         self.assertEqual(kwargs["input_dtype"], torch_npu.float4_e2m1fn_x2)
 
 
+def test_super_kernel_scope_disabled_skips_npu_calls():
+    with mock.patch.object(utils.torch, "npu") as mock_npu:
+        with utils.super_kernel_scope("full_model", enabled=False):
+            pass
+
+    mock_npu.super_kernel_scope_begin.assert_not_called()
+    mock_npu.super_kernel_scope_end.assert_not_called()
+
+
+def test_super_kernel_scope_enabled_brackets_body_and_closes_on_error():
+    with mock.patch.object(utils.torch, "npu") as mock_npu:
+        with utils.super_kernel_scope("full_model", enabled=True):
+            mock_npu.super_kernel_scope_begin.assert_called_once_with("full_model")
+            mock_npu.super_kernel_scope_end.assert_not_called()
+
+        mock_npu.super_kernel_scope_end.assert_called_once_with("full_model")
+
+        mock_npu.super_kernel_scope_end.reset_mock()
+        with pytest.raises(RuntimeError):
+            with utils.super_kernel_scope("full_model", enabled=True):
+                raise RuntimeError("capture failed")
+
+        # The scope must be closed even when capture raises, otherwise the
+        # NPU scope stack would leak into the next graph capture.
+        mock_npu.super_kernel_scope_end.assert_called_once_with("full_model")
+
+
 def test_is_pd_decode_recompute_scheduler_enabled_without_config():
     assert utils.is_pd_decode_recompute_scheduler_enabled() is False
 
