@@ -1,27 +1,47 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""V4.1 replicated-cache TP-token DSA CP adapter."""
+"""V4.1 replicated-cache adapters for legacy TP-token CP and MRV2 PCP."""
 
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, fields, replace
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import torch
-from vllm.distributed import get_tp_group
+from vllm.distributed import get_pcp_group, get_tp_group
 from vllm.forward_context import get_forward_context
 
-from vllm_ascend.attention.context_parallel.dsa_cp import AscendDSACPMetadataBuilder, restore_tp_heads
+from vllm_ascend.attention.context_parallel.dsa_cp import (
+    AscendDSACPMetadataBuilder,
+    AscendDSAPCPMetadataBuilder,
+    restore_tp_heads,
+)
 from vllm_ascend.attention.dsa_v1 import dsv4_dsa_overlap_stream
 from vllm_ascend.attention.dsa_v41 import (
     AscendDSAV41Impl,
+    AscendDSAV41Metadata,
     AscendDSAV41MetadataBuilder,
     _config_value,
 )
+from vllm_ascend.attention.utils import AscendCommonAttentionMetadata, enable_pcp
+from vllm_ascend.core.kv_cache_interface import get_kv_cache_compression_ratio, get_storage_block_size
+from vllm_ascend.ops.rope_dsv4 import get_full_cos_and_sin_dsa_for_layer
 from vllm_ascend.utils import enable_dsa_cp, npu_stream_switch
+
+if TYPE_CHECKING:
+    from vllm_ascend.worker.v2.pcp_manager import AscendPCPAttentionContext
 
 
 def get_v41_cp_classes():
-    if enable_dsa_cp():
+    use_dsa_cp = enable_dsa_cp()
+    # Read the current model config: DSpark's target uses PCP, while its
+    # replicated draft is constructed under a separate PCP=1 config.
+    use_pcp = enable_pcp()
+    if use_dsa_cp and use_pcp:
+        raise ValueError("Legacy DSACP and PCP cannot be enabled at the same time.")
+    if use_dsa_cp:
         return AscendDSAV41CPMetadataBuilder, AscendDSAV41CPImpl
+    if use_pcp:
+        return AscendDSAV41PCPMetadataBuilder, AscendDSAV41PCPImpl
     return AscendDSAV41MetadataBuilder, AscendDSAV41Impl
 
 
@@ -266,3 +286,267 @@ class AscendDSAV41CPImpl(AscendDSAV41Impl):
         # The inherited V4 module owns quantized weights and TP projection logic.
         attn.dsa_attn.dsa_attn.impl._forward_o_proj(exchanged[: hidden_states.shape[0]], projected)
         return projected
+
+
+# =============================================================================
+# MRV2 DSV4.1-PCP implementation
+# =============================================================================
+# As in DSA PCP, queries follow rank-local DualChunkSwap order while caches
+# are replicated across PCP ranks. The global view restores scheduler order
+# for SWA, compressor and Indexer K updates; the local view owns Q/attention.
+
+
+@dataclass(kw_only=True)
+class AscendDSAV41PCPMetadata(AscendDSAV41Metadata):
+    """Rank-local query metadata with a canonical replicated-cache view."""
+
+    # Model/O-projection extent, including padding. Inherited num_actual_tokens
+    # counts live local queries, and global_metadata owns cache-write controls.
+    local_num_tokens_after_padding: int
+    # Scheduler-global rows -> rank-major gathered rows; the graph-padded tail
+    # uses safe gather indices and is excluded from live cache updates.
+    hidden_restore_idx: torch.Tensor
+
+    @classmethod
+    def from_local_metadata(
+        cls,
+        local: AscendDSAV41Metadata,
+        global_metadata: AscendDSAV41Metadata,
+        local_num_tokens_after_padding: int,
+        hidden_restore_idx: torch.Tensor,
+    ) -> "AscendDSAV41PCPMetadata":
+        # Copy the dataclass fields without cloning any graph-owned tensors.
+        values = {field.name: getattr(local, field.name) for field in fields(AscendDSAV41Metadata)}
+        values["global_metadata"] = global_metadata
+        return cls(
+            **values,
+            local_num_tokens_after_padding=local_num_tokens_after_padding,
+            hidden_restore_idx=hidden_restore_idx,
+        )
+
+
+class AscendDSAV41PCPMetadataBuilder(_ReplicatedCacheMetadataBuilder):
+    """Build PCP-local queries and scheduler-global cache-write controls."""
+
+    # MRV2 injects its canonical batch and group-specific tables/slots into
+    # builders carrying this marker; no runner-side V4.1 special case is needed.
+    consumes_pcp_context: ClassVar[bool] = True
+    _request_capacity_factor: ClassVar[int] = 2
+
+    def __init__(self, kv_cache_spec, layer_names, vllm_config, device):
+        if vllm_config.parallel_config.decode_context_parallel_size != 1:
+            raise NotImplementedError("V4.1 PCP currently requires DCP=1 for replicated caches.")
+        super().__init__(kv_cache_spec, layer_names, vllm_config, device)
+        self._pcp_world_size = vllm_config.parallel_config.prefill_context_parallel_size
+        self._pcp_rank = get_pcp_group().rank_in_group
+        self._hidden_restore_idx_buffer = torch.empty(self._max_tokens, dtype=torch.int64, device=device)
+
+        # Prefills become two local request rows under DualChunkSwap. Decode
+        # graphs may have more padded requests than scheduler.max_num_seqs.
+        max_reqs = vllm_config.scheduler_config.max_num_seqs
+        capture_sizes = vllm_config.compilation_config.cudagraph_capture_sizes or ()
+        graph_reqs = max(capture_sizes, default=0)
+        self._resize_request_buffers(self, max(self._request_capacity_factor * max_reqs, graph_reqs) + 1)
+        self._resize_request_buffers(self._global_builder, max(max_reqs, graph_reqs) + 1)
+
+        # Each entry holds full tables, local Q RoPE, and global KV RoPE.
+        # Layers with the same tables share buffers within this builder.
+        self._pcp_rope_buffers: dict[str, tuple[torch.Tensor, ...]] = {}
+
+    @staticmethod
+    def _resize_request_buffers(builder, capacity: int) -> None:
+        # Resize during initialization, before operators capture these addresses.
+        # The global builder alone owns C2 ring metadata in scheduler order.
+        for name in ("_seq_lens", "_cache_seq_lens", "_cmp_residual"):
+            buffer = getattr(builder, name)
+            setattr(builder, name, buffer.new_zeros(capacity))
+        if builder._build_compressor_metadata:
+            builder._c2_ring_metadata = builder._c2_ring_metadata.new_zeros(5 * capacity)
+
+    def prepare_source_rope(self) -> None:
+        super().prepare_source_rope()
+        if self._cache_kind != "swa" or self._pcp_rope_buffers:
+            return
+        by_table: dict[tuple[int, int], tuple[torch.Tensor, ...]] = {}
+        for cache_name in self.layer_names:
+            layer_name = cache_name.removesuffix(".swa_cache") + ".attn"
+            full_cos, full_sin = get_full_cos_and_sin_dsa_for_layer(layer_name)
+            key = (full_cos.data_ptr(), full_sin.data_ptr())
+            buffers = by_table.get(key)
+            if buffers is None:
+                # Buffer order: full tables, local Q cos/sin, global KV cos/sin.
+                # Allocate once before warmup; later builds only refresh values.
+                shape = (self._max_tokens, *full_cos.shape[1:])
+                buffers = (
+                    full_cos,
+                    full_sin,
+                    full_cos.new_empty(shape),
+                    full_sin.new_empty(shape),
+                    full_cos.new_empty(shape),
+                    full_sin.new_empty(shape),
+                )
+                by_table[key] = buffers
+            self._pcp_rope_buffers[layer_name] = buffers
+
+    def _build_pcp_rope_views(self, common: AscendCommonAttentionMetadata, *, global_cache: bool):
+        if self._cache_kind != "swa":
+            return None
+        # MRV2 prepares these buffers before warmup/capture. They must never
+        # alias the process-wide RoPE buffers used by the replicated drafter.
+        assert self._pcp_rope_buffers, "Prepare V4.1 PCP RoPE before building attention metadata"
+        num_tokens = common.num_input_tokens
+        positions = common.positions[:num_tokens].long()
+        cos_views, sin_views = {}, {}
+        gathered = {}
+        for layer_name, buffers in self._pcp_rope_buffers.items():
+            full_cos, full_sin = buffers[:2]
+            key = (full_cos.data_ptr(), full_sin.data_ptr())
+            views = gathered.get(key)
+            if views is None:
+                offset = 4 if global_cache else 2
+                cos, sin = buffers[offset : offset + 2]
+                cos, sin = cos[:num_tokens], sin[:num_tokens]
+                if num_tokens:
+                    # Local chunks are not a contiguous slice of global RoPE.
+                    # Gather each layout's positions into its own stable buffer.
+                    indices = positions.reshape(-1, 1, 1, 1).expand(num_tokens, 1, 1, full_cos.shape[-1])
+                    torch.gather(full_cos, 0, indices, out=cos)
+                    torch.gather(full_sin, 0, indices, out=sin)
+                views = (cos, sin)
+                gathered[key] = views
+            cos_views[layer_name], sin_views[layer_name] = views
+        return cos_views, sin_views
+
+    def _build_empty_local_metadata(self, common: AscendCommonAttentionMetadata) -> AscendDSAV41Metadata:
+        # Empty query ranks still need global cache updates, but must not
+        # launch SMLA/QLI tiling operators with an empty local request batch.
+        self._device_metadata_tasks = ()
+        num_tokens, num_reqs = common.num_input_tokens, common.num_reqs
+        is_state = self._cache_kind == "compressor_state"
+        slots = self._slot_mapping if is_state else self._slot_mapping_2d
+        return AscendDSAV41Metadata(
+            block_table=common.block_table_tensor[:num_reqs],
+            query_start_loc=common.query_start_loc[: num_reqs + 1],
+            query_start_loc_cpu=common.query_start_loc_cpu,
+            seq_lens=self._seq_lens[:num_reqs].zero_(),
+            seq_lens_cpu=common.seq_lens_cpu,
+            cache_seq_lens=self._cache_seq_lens[:num_reqs].zero_(),
+            slot_mapping=slots[:num_tokens].fill_(-1),
+            flat_slot_mapping=None if is_state else self._flat_slot_mapping[:num_tokens].fill_(-1),
+            compress_ratio=get_kv_cache_compression_ratio(self.kv_cache_spec),
+            storage_block_size=get_storage_block_size(self.kv_cache_spec),
+            logical_block_size=self.kv_cache_spec.block_size,
+            is_compressor_state=is_state,
+            cache_kind=self._cache_kind,
+            positions=common.positions[:num_tokens],
+            num_input_tokens=num_tokens,
+            num_reqs=num_reqs,
+            attn_state=common.attn_state,
+            is_prefilling=common.is_prefilling,
+            causal=common.causal,
+        )
+
+    def build(
+        self,
+        common_prefix_len,
+        common_attn_metadata: AscendCommonAttentionMetadata,
+        fast_build=False,
+        pcp_context: "AscendPCPAttentionContext | None" = None,
+        pcp_cache_group_idx: int | None = None,
+        num_actual_reqs: int | None = None,
+        **kwargs: Any,
+    ) -> AscendDSAV41PCPMetadata:
+        assert pcp_context is not None, "V4.1 PCP requires the MRV2 global batch context"
+        assert pcp_cache_group_idx is not None
+        # Reuse DSA PCP's layout helpers: stabilize the restore index, take
+        # global cache-group slots, and select this rank's local slot row.
+        pcp_context = AscendDSAPCPMetadataBuilder._prepare_graph_pcp_context(self, pcp_context)
+        global_common = AscendDSAPCPMetadataBuilder._build_global_common_attn_metadata(
+            pcp_context, pcp_cache_group_idx, common_attn_metadata
+        )
+        local_common = AscendDSAPCPMetadataBuilder._build_local_common_attn_metadata(
+            self, pcp_context, common_attn_metadata
+        )
+        if kwargs.get("full_graph_mode", False):
+            # FULL_DECODE_ONLY query offsets cover every padded graph token;
+            # live request counts and invalid slots still suppress padded writes.
+            global_common = AscendDSAPCPMetadataBuilder._build_graph_common_attn_metadata(
+                global_common, pcp_context.global_batch.num_reqs
+            )
+            local_common = AscendDSAPCPMetadataBuilder._build_graph_common_attn_metadata(local_common, num_actual_reqs)
+
+        # Dummy graph inputs must not advance compressor state. Invalid global
+        # and local slot mappings also suppress SWA and compressed-cache writes.
+        global_kwargs = dict(kwargs)
+        global_kwargs["num_actual_reqs"] = pcp_context.global_batch.num_reqs
+        global_kwargs["skip_ring_state_update"] = (
+            bool(kwargs.get("skip_ring_state_update", False)) or pcp_context.global_batch.is_dummy
+        )
+        global_rope = self._build_pcp_rope_views(global_common, global_cache=True)
+        if global_rope is not None:
+            global_kwargs["rope_views"] = global_rope
+        global_metadata = self._build_global_metadata(common_prefix_len, global_common, fast_build, global_kwargs)
+
+        if local_common.num_actual_tokens == 0:
+            local_metadata = self._build_empty_local_metadata(local_common)
+        else:
+            local_kwargs = dict(kwargs)
+            local_kwargs["num_actual_reqs"] = local_common.num_reqs if num_actual_reqs is None else num_actual_reqs
+            # Separate local sequence/tiling sharing from the global builder's
+            # cp_global namespace; their request boundaries and lengths differ.
+            for name in ("common_v41_metadata", "common_v41_batch_metadata"):
+                shared = kwargs.get(name)
+                if shared is not None:
+                    local_kwargs[name] = shared.setdefault("pcp_local", {})
+            local_rope = self._build_pcp_rope_views(local_common, global_cache=False)
+            if local_rope is not None:
+                local_kwargs["rope_views"] = local_rope
+            local_metadata = super().build(common_prefix_len, local_common, fast_build, **local_kwargs)
+        return AscendDSAV41PCPMetadata.from_local_metadata(
+            local_metadata,
+            global_metadata,
+            local_common.num_input_tokens,
+            pcp_context.hidden_restore_idx,
+        )
+
+
+class AscendDSAV41PCPImpl(AscendDSAV41Impl):
+    """Update replicated caches once, then run rank-local V4.1 attention."""
+
+    # Inherited Indexer/TopK/candidate reuse stays local to each PCP rank.
+    # Inherited O-projection preserves local padded tokens and TP-local heads;
+    # MRV2 later restores target hidden/aux states for sampling and DSpark.
+    supports_pcp: ClassVar[bool] = True
+
+    # Resolve only this layer's cache planes; the metadata map also contains
+    # the replicated DSpark drafter's independent cache resources.
+    _global_layer_metadata = AscendDSAV41CPImpl._global_layer_metadata
+
+    @staticmethod
+    def _gather_and_restore_hidden_states(
+        hidden_states: torch.Tensor,
+        metadata: AscendDSAV41PCPMetadata,
+    ) -> torch.Tensor:
+        assert hidden_states.shape[0] == metadata.local_num_tokens_after_padding
+        # all_gather concatenates rank slices, including local padding. The
+        # restore index reorders DualChunkSwap chunks into scheduler token order.
+        gathered = get_pcp_group().all_gather(hidden_states.contiguous(), dim=0)
+        return torch.index_select(gathered, 0, metadata.hidden_restore_idx)
+
+    def _prepare_inputs_and_caches(self, attn, hidden_states, metadata, metadata_by_prefix):
+        assert isinstance(metadata.swa, AscendDSAV41PCPMetadata)
+        # Called before the base forward checks for empty local Q: every rank
+        # joins the collective and updates its complete cache replica once.
+        global_hidden_states = self._gather_and_restore_hidden_states(hidden_states, metadata.swa)
+        global_metadata = self._global_layer_metadata(metadata_by_prefix)
+        self._update_caches(attn, global_hidden_states[: global_metadata.swa.num_actual_tokens], global_metadata)
+
+    def _prepare_queries(self, attn, hidden_states, positions, cos, sin, metadata):
+        # Q keeps TP-local heads and PCP-local token order. The global update
+        # already wrote SWA, so do not use the Q/KV preprocessing path here.
+        return self._project_q(attn, hidden_states[: metadata.swa.num_actual_tokens], cos, sin)
+
+    def _write_forward_compressed_source(self, attn, hidden_states, positions, cos, sin, metadata, prepared_indexer):
+        # C1/C2, index K and folded candidate-source K were already published
+        # from scheduler-global inputs. Only query quantization remains local.
+        self._quantize_indexer_query(attn, prepared_indexer, metadata)

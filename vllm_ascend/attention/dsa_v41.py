@@ -1440,7 +1440,9 @@ class DeepseekV41CacheBackend(AttentionBackend):
 
     @staticmethod
     def get_impl_cls():
-        return AscendDSAV41Impl
+        from vllm_ascend.attention.context_parallel.dsa_v41_cp import get_v41_cp_classes
+
+        return get_v41_cp_classes()[1]
 
     @staticmethod
     def get_builder_cls():
@@ -1450,7 +1452,7 @@ class DeepseekV41CacheBackend(AttentionBackend):
 
     @classmethod
     def supports_pcp(cls) -> bool:
-        return False
+        return True
 
     @staticmethod
     def get_kv_cache_shape(num_blocks, block_size, num_kv_heads, head_size, cache_dtype_str="auto"):
