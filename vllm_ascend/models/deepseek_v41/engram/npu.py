@@ -23,7 +23,7 @@ SCALE_GROUP = 32
 # Cap HOST_UVA lookup parallelism so Engram leaves vector-core capacity for
 # latency-sensitive model work. The cap is a tuning point, not a hardware core
 # count: validate it against end-to-end latency on the target Ascend device.
-UVA_MAX_PROGRAMS = 16
+UVA_MAX_PROGRAMS = 8
 # A 384M row table overflows the 32 bit offset arithmetic a single Triton tile
 # can express, so the device address of every group of rows is published
 # separately.
