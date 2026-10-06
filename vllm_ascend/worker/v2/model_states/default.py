@@ -44,6 +44,9 @@ class AscendModelState(DefaultModelState):
     kvpp_runtime: "KVPPRuntime | None" = None
     kvpp_is_dummy_run: bool = False
     device_metadata: "TargetDeviceMetadata | None" = None
+    # Set by states whose prepare_inputs submits engram on their own (with
+    # cg_mode/force_dummy); disables the synchronous fallback below.
+    engram_inputs_managed_by_state: bool = False
 
     def _get_engram_device_inputs(self, input_batch: AscendInputBatch) -> dict[str, torch.Tensor]:
         """Device request coordinates for upstream NgramHashState."""
@@ -84,7 +87,10 @@ class AscendModelState(DefaultModelState):
     def prepare_inputs(self, input_batch, req_states) -> dict[str, Any]:
         model_inputs = super().prepare_inputs(input_batch, req_states)
         prepare_engram_inputs = getattr(self.model, "prepare_engram_inputs", None)
-        if prepare_engram_inputs is None:
+        # States that submit engram themselves (with cg_mode/force_dummy) opt
+        # out: this fallback stays synchronous on the main stream and would
+        # duplicate the whole hash/lookup chain plus its collectives.
+        if prepare_engram_inputs is None or self.engram_inputs_managed_by_state:
             return model_inputs
         num_tokens = input_batch.num_tokens_after_padding
         model_inputs.update(

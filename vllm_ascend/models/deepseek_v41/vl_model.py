@@ -211,8 +211,8 @@ class AscendDeepseekV41ForCausalLM(
     def prepare_engram_graph_inputs(self, padded_tokens=None):
         return self.language_model.prepare_engram_graph_inputs(padded_tokens)
 
-    def retire_engram_lookups(self):
-        self.language_model.retire_engram_lookups()
+    def retire_engram_lookups(self, *, reset_events=False):
+        self.language_model.retire_engram_lookups(reset_events=reset_events)
 
     def prepare_engram_inputs(
         self,
