@@ -20,6 +20,12 @@ from vllm.logger import logger
 from vllm.triton_utils import tl, triton
 
 SCALE_GROUP = 32
+# Process several rows serially per CTA on the HOST_UVA path. A one-row CTA
+# grid can issue many unrelated host-memory gathers at once and contend with
+# latency-sensitive work on the vector cores. Grouping rows limits that burst
+# concurrency; tune against end-to-end latency because it can extend lookup
+# time when Engram is the only active workload.
+UVA_ROWS_PER_PROGRAM = 4
 # A 384M row table overflows the 32 bit offset arithmetic a single Triton tile
 # can express, so the device address of every group of rows is published
 # separately.
@@ -277,45 +283,48 @@ def _engram_host_uva_gather_dequant_kernel(
     PAD_HEADS: tl.constexpr,
     QUANTIZED: tl.constexpr,
     MXFP8: tl.constexpr,
+    ROWS_PER_PROGRAM: tl.constexpr,
 ):
-    row = tl.program_id(0)
-    if row < rows:
-        token = row // LOCAL_HEADS
-        head_local = row % LOCAL_HEADS
-        index = tl.load(ids + token * ids_stride_t + HEAD_START + head_local).to(tl.int64)
-        owned = (index >= vocab_start) & (index < vocab_end)
-        local_row = tl.where(owned, index - vocab_start, 0)
-        chunk = local_row // CHUNK
-        local = local_row % CHUNK
-        if MXFP8:
-            codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.float8e4nv))
-        elif QUANTIZED:
-            codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.int8))
-        else:
-            codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.bfloat16))
-        col = tl.arange(0, WIDTH)
-        value = tl.load(codes + local * WIDTH + col).to(tl.float32)
-        if QUANTIZED:
+    row_base = tl.program_id(0) * ROWS_PER_PROGRAM
+    for row_offset in range(ROWS_PER_PROGRAM):
+        row = row_base + row_offset
+        if row < rows:
+            token = row // LOCAL_HEADS
+            head_local = row % LOCAL_HEADS
+            index = tl.load(ids + token * ids_stride_t + HEAD_START + head_local).to(tl.int64)
+            owned = (index >= vocab_start) & (index < vocab_end)
+            local_row = tl.where(owned, index - vocab_start, 0)
+            chunk = local_row // CHUNK
+            local = local_row % CHUNK
             if MXFP8:
-                scales = tl.load(scales_ptrs + chunk).to(tl.pointer_type(tl.uint8))
+                codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.float8e4nv))
+            elif QUANTIZED:
+                codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.int8))
             else:
-                scales = tl.load(scales_ptrs + chunk).to(tl.pointer_type(tl.float32))
-            if MXFP8:
-                # Read and decode each group scale once, then broadcast to
-                # its values instead of gathering WIDTH repeated bytes.
-                groups = tl.arange(0, WIDTH // GROUP)
-                scale = tl.load(scales + local * (WIDTH // GROUP) + groups)
-                scale = _decode_e8m0(scale)
-                value = tl.reshape(value, (WIDTH // GROUP, GROUP)) * scale[:, None]
-                value = tl.reshape(value, (WIDTH,))
-            else:
-                scale = tl.load(scales + local * (WIDTH // GROUP) + col // GROUP)
-                value = value * scale
-        result = value.to(tl.bfloat16)
-        tl.store(
-            output + (token * PAD_HEADS + head_local) * WIDTH + col,
-            tl.where(owned, result, tl.zeros_like(result)),
-        )
+                codes = tl.load(codes_ptrs + chunk).to(tl.pointer_type(tl.bfloat16))
+            col = tl.arange(0, WIDTH)
+            value = tl.load(codes + local * WIDTH + col).to(tl.float32)
+            if QUANTIZED:
+                if MXFP8:
+                    scales = tl.load(scales_ptrs + chunk).to(tl.pointer_type(tl.uint8))
+                else:
+                    scales = tl.load(scales_ptrs + chunk).to(tl.pointer_type(tl.float32))
+                if MXFP8:
+                    # Read and decode each group scale once, then broadcast to
+                    # its values instead of gathering WIDTH repeated bytes.
+                    groups = tl.arange(0, WIDTH // GROUP)
+                    scale = tl.load(scales + local * (WIDTH // GROUP) + groups)
+                    scale = _decode_e8m0(scale)
+                    value = tl.reshape(value, (WIDTH // GROUP, GROUP)) * scale[:, None]
+                    value = tl.reshape(value, (WIDTH,))
+                else:
+                    scale = tl.load(scales + local * (WIDTH // GROUP) + col // GROUP)
+                    value = value * scale
+            result = value.to(tl.bfloat16)
+            tl.store(
+                output + (token * PAD_HEADS + head_local) * WIDTH + col,
+                tl.where(owned, result, tl.zeros_like(result)),
+            )
 
 
 def gather_dequantize_host_uva(
@@ -349,7 +358,7 @@ def gather_dequantize_host_uva(
         return output
     init_device_properties_triton()
     # The kernel widens loaded IDs to int64; no extra cast/copy is needed here.
-    _engram_host_uva_gather_dequant_kernel[(rows,)](
+    _engram_host_uva_gather_dequant_kernel[(triton.cdiv(rows, UVA_ROWS_PER_PROGRAM),)](
         codes.ptrs,
         scales.ptrs if scales is not None else None,
         ids,
@@ -366,6 +375,7 @@ def gather_dequantize_host_uva(
         PAD_HEADS=pad_heads,
         QUANTIZED=scales is not None,
         MXFP8=codes.tensor.dtype == torch.float8_e4m3fn,
+        ROWS_PER_PROGRAM=UVA_ROWS_PER_PROGRAM,
         num_warps=4,
     )
     return output
