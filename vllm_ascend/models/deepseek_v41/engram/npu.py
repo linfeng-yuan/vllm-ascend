@@ -24,6 +24,11 @@ SCALE_GROUP = 32
 # latency-sensitive model work. The cap is a tuning point, not a hardware core
 # count: validate it against end-to-end latency on the target Ascend device.
 UVA_MAX_PROGRAMS = 8
+# Expose roughly one full model's worth of hash heads in each FP8 program,
+# including when TP or EDP leaves only a few local heads per rank.
+UVA_FP8_ROWS_PER_TILE = 24
+UVA_FP8_TILED_WIDTH = 256
+UVA_FP8_MAX_BLOCK_ROWS = 32
 # A 384M row table overflows the 32 bit offset arithmetic a single Triton tile
 # can express, so the device address of every group of rows is published
 # separately.
@@ -321,6 +326,59 @@ def _engram_host_uva_gather_dequant_kernel(
         )
 
 
+@triton.jit(do_not_specialize=["tokens"])
+def _engram_host_uva_gather_dequant_fp8_token_kernel(
+    codes_ptrs,
+    scales_ptrs,
+    ids,
+    output,
+    tokens,
+    vocab_start,
+    vocab_end,
+    ids_stride_t,
+    CHUNK: tl.constexpr,
+    WIDTH: tl.constexpr,
+    GROUP: tl.constexpr,
+    HEAD_START: tl.constexpr,
+    LOCAL_HEADS: tl.constexpr,
+    PAD_HEADS: tl.constexpr,
+    TILE_TOKENS: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+):
+    # One tile owns complete tokens, so all local heads of a token can issue
+    # independent UVA reads together instead of serializing one head per loop.
+    row_offsets = tl.arange(0, BLOCK_ROWS)
+    cols = tl.arange(0, WIDTH)
+    groups = tl.arange(0, WIDTH // GROUP)
+    for tile in range(tl.program_id(0), tl.cdiv(tokens, TILE_TOKENS), tl.num_programs(0)):
+        token = tile * TILE_TOKENS + row_offsets // LOCAL_HEADS
+        head_local = row_offsets % LOCAL_HEADS
+        active = (row_offsets < TILE_TOKENS * LOCAL_HEADS) & (token < tokens)
+        index = tl.load(ids + token * ids_stride_t + HEAD_START + head_local, mask=active, other=-1).to(tl.int64)
+        owned = active & (index >= vocab_start) & (index < vocab_end)
+        local_row = tl.where(owned, index - vocab_start, 0)
+        chunk = local_row // CHUNK
+        local = local_row % CHUNK
+        codes = tl.load(codes_ptrs + chunk, mask=owned, other=0).to(tl.pointer_type(tl.float8e4nv))
+        values = tl.load(codes[:, None] + local[:, None] * WIDTH + cols[None, :], mask=owned[:, None], other=0).to(
+            tl.float32
+        )
+        scales = tl.load(scales_ptrs + chunk, mask=owned, other=0).to(tl.pointer_type(tl.uint8))
+        scale = tl.load(
+            scales[:, None] + local[:, None] * (WIDTH // GROUP) + groups[None, :],
+            mask=owned[:, None],
+            other=0,
+        )
+        scale = _decode_e8m0(scale)
+        values = tl.reshape(values, (BLOCK_ROWS, WIDTH // GROUP, GROUP)) * scale[:, :, None]
+        result = tl.reshape(values, (BLOCK_ROWS, WIDTH)).to(tl.bfloat16)
+        tl.store(
+            output + (token[:, None] * PAD_HEADS + head_local[:, None]) * WIDTH + cols[None, :],
+            tl.where(owned[:, None], result, tl.zeros_like(result)),
+            mask=active[:, None],
+        )
+
+
 def gather_dequantize_host_uva(
     codes: HostUvaBuffer,
     scales: HostUvaBuffer | None,
@@ -351,6 +409,31 @@ def gather_dequantize_host_uva(
     if rows == 0:
         return output
     init_device_properties_triton()
+    if codes.tensor.dtype == torch.float8_e4m3fn and scales is not None and width == UVA_FP8_TILED_WIDTH:
+        tile_tokens = triton.cdiv(UVA_FP8_ROWS_PER_TILE, local_heads)
+        block_rows = triton.next_power_of_2(tile_tokens * local_heads)
+        if block_rows <= UVA_FP8_MAX_BLOCK_ROWS:
+            num_tiles = triton.cdiv(tokens, tile_tokens)
+            _engram_host_uva_gather_dequant_fp8_token_kernel[(min(num_tiles, UVA_MAX_PROGRAMS),)](
+                codes.ptrs,
+                scales.ptrs,
+                ids,
+                output,
+                tokens,
+                vocab_start,
+                vocab_end,
+                ids.stride(0),
+                CHUNK=CHUNK_ROWS,
+                WIDTH=width,
+                GROUP=SCALE_GROUP,
+                HEAD_START=head_start,
+                LOCAL_HEADS=local_heads,
+                PAD_HEADS=pad_heads,
+                TILE_TOKENS=tile_tokens,
+                BLOCK_ROWS=block_rows,
+                num_warps=4,
+            )
+            return output
     # Launch a bounded grid. Programs stride over rows at runtime so changing
     # the request size does not require a new row-count specialization.
     num_programs = min(rows, UVA_MAX_PROGRAMS)
