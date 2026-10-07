@@ -1,3 +1,4 @@
+import functools
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -44,7 +45,10 @@ from vllm_ascend.models.deepseek_v4.indexer import AscendIndexerMetadata, Indexe
 from vllm_ascend.ops.cv_linear import CVLinearWrapper
 from vllm_ascend.ops.linear import AscendUnquantizedLinearMethod
 from vllm_ascend.ops.rope_dsv4 import get_cos_and_sin_dsa, get_full_cos_and_sin_dsa
-from vllm_ascend.quantization.methods import AscendW8A8DynamicLinearMethod
+from vllm_ascend.quantization.methods import (
+    AscendW8A8DynamicLinearMethod,
+    AscendW8A8MXFP8DynamicLinearMethod,
+)
 from vllm_ascend.utils import (
     get_potential_max_tokens,
     npu_stream_switch,
@@ -198,6 +202,15 @@ def _is_w8a8_dynamic(linear) -> bool:
 
 def _has_weight_scale(linear) -> bool:
     return getattr(linear, "weight_scale", None) is not None
+
+
+@functools.lru_cache(maxsize=1)
+def _has_npu_quant_matmul_out() -> bool:
+    """Whether the _C_ascend binding exposes the out-variant MXFP8 quant matmul."""
+    try:
+        return hasattr(torch.ops._C_ascend, "npu_quant_matmul_out")
+    except AttributeError:
+        return False
 
 
 def _dsa_layout_kv(vllm_config: VllmConfig) -> str:
@@ -1681,7 +1694,33 @@ class AscendDSAImpl(AttentionImplBase[Any]):
                 perm_y=(1, 0, 2),
             )
             o = o.reshape(num_tokens, -1)
-            output[...] = self.wo_b(o)
+            # Write the wo_b GEMM result directly into the graph-stable
+            # `output` buffer via the aclnnQuantMatmulV5 out-variant. The
+            # default `output[...] = self.wo_b(o)` inserts a full-tensor
+            # copy_ (TensorMove) after every o_proj GEMM.
+            if _has_npu_quant_matmul_out() and isinstance(
+                self.wo_b.quant_method, AscendW8A8MXFP8DynamicLinearMethod
+            ):
+                method = self.wo_b.quant_method
+                quant_o, o_scale = torch_npu.npu_dynamic_mx_quant(
+                    o, dst_type=torch.float8_e4m3fn, scale_alg=method.dynamic_mx_quant_scale_alg
+                )
+                bias = self.wo_b.bias
+                if bias is not None and bias.dtype != torch.float32:
+                    bias = bias.to(torch.float32)
+                group_size = getattr(method, "group_size", 32)
+                # Pack group_sizes=(1, 1, group_size) as (gsM<<32)|(gsN<<16)|gsK.
+                torch.ops._C_ascend.npu_quant_matmul_out(
+                    quant_o,
+                    self.wo_b.weight,
+                    self.wo_b.weight_scale.view(torch.float8_e8m0fnu),
+                    o_scale.view(torch.float8_e8m0fnu),
+                    bias,
+                    (1 << 32) | (1 << 16) | group_size,
+                    output,
+                )
+            else:
+                output[...] = self.wo_b(o)
         elif oproj_tp_enable():
             oproj_group = get_otp_group()
             oproj_tp_size = oproj_group.world_size
