@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not hasattr(torch, "npu") or not torch.npu.is_av
 
 @pytest.mark.parametrize(
     "num_tokens,local_heads",
-    [(1, 24), (17, 24), (128, 24), (128, 3), (384, 3)],
+    [(1, 24), (17, 24), (128, 24), (384, 24), (9, 3), (128, 3), (384, 3)],
 )
 def test_host_uva_fp8_token_tiles_match_rowwise_lookup(num_tokens, local_heads):
     width = 256
@@ -57,9 +57,9 @@ def test_host_uva_fp8_token_tiles_match_rowwise_lookup(num_tokens, local_heads):
             vocab_start=vocab_start,
             vocab_end=vocab_start + table_rows,
         )
-        # Launch the original one-row-per-program schedule as the oracle.
+        # Compare against the capped row-wise schedule used before token tiling.
         rows = num_tokens * local_heads
-        npu._engram_host_uva_gather_dequant_kernel[(rows,)](
+        npu._engram_host_uva_gather_dequant_kernel[(min(rows, npu.UVA_MAX_PROGRAMS),)](
             codes.ptrs,
             scales.ptrs,
             ids,
