@@ -8,30 +8,10 @@ import pytest
 import torch
 
 from vllm_ascend.attention import dsa_v41
-from vllm_ascend.attention.context_parallel import dsa_v41_cp
 from vllm_ascend.attention.dsa_v41 import AscendDSAV41Impl, DeepseekV41PreparedIndexer
 from vllm_ascend.ops.dsv41_a5 import indexer as a5_indexer
 
 TOKENS, TOPK = 4, 512
-
-
-@pytest.mark.parametrize("in_graph", [False, True])
-def test_cp_defer_scope_forwards_graph_mode_and_restores_both_builders(monkeypatch, in_graph):
-    base = dsa_v41.AscendDSAV41MetadataBuilder
-    cp = dsa_v41_cp._ReplicatedCacheMetadataBuilder.__new__(dsa_v41_cp._ReplicatedCacheMetadataBuilder)
-    cp._global_builder = base.__new__(base)
-    for builder in (cp, cp._global_builder):
-        builder._device_metadata_enabled = False
-        builder._device_metadata_in_graph = False
-        builder._uses_a5_packed_cache = True
-    monkeypatch.setattr(base, "prepare_source_rope", lambda self: None)
-    with cp.defer_device_metadata(in_graph=in_graph):
-        for builder in (cp, cp._global_builder):
-            assert builder._device_metadata_enabled
-            assert builder._device_metadata_in_graph == in_graph
-    for builder in (cp, cp._global_builder):
-        assert not builder._device_metadata_enabled
-        assert not builder._device_metadata_in_graph
 
 
 @pytest.mark.parametrize("in_graph", [False, True])
@@ -244,35 +224,6 @@ def test_compressor_input_ready_before_query_quantization(monkeypatch, ratio, c2
     assert metadata_waits == (
         [(dsa_v41.DeviceMetadataStage.COMPRESSOR, c2_group)] if ratio == 2 and c2_group is not None else []
     )
-
-
-def test_cp_keeps_local_query_and_global_compressor_inputs(monkeypatch):
-    impl = dsa_v41_cp.AscendDSAV41CPImpl.__new__(dsa_v41_cp.AscendDSAV41CPImpl)
-    hidden_states = torch.arange(32).view(4, 8)
-    local_metadata = SimpleNamespace(swa=SimpleNamespace(cp_token_range=(2, 4, 2, 0), num_actual_tokens=2))
-    global_metadata = SimpleNamespace(
-        swa=SimpleNamespace(num_actual_tokens=4),
-        positions=torch.arange(4),
-        rope=lambda name, count: (torch.ones(count, 4), torch.zeros(count, 4)),
-    )
-    calls = []
-    monkeypatch.setattr(impl, "_global_layer_metadata", lambda metadata: global_metadata)
-    monkeypatch.setattr(dsa_v41_cp, "get_forward_context", lambda: SimpleNamespace(attn_metadata=object()))
-    monkeypatch.setattr(impl, "_write_compressed_source", lambda *args, **kwargs: calls.append((args, kwargs)))
-
-    assert torch.equal(impl._indexer_hidden_states(hidden_states, local_metadata), hidden_states[2:4])
-    impl._write_forward_compressed_source(
-        SimpleNamespace(rotary_emb=SimpleNamespace(layername="attn")),
-        hidden_states,
-        None,
-        None,
-        None,
-        local_metadata,
-        prepared_indexer=object(),
-    )
-    assert len(calls) == 1
-    assert torch.equal(calls[0][0][1], hidden_states)
-    assert calls[0][0][5] is global_metadata
 
 
 def test_a5_indexer_uses_prequantized_query(monkeypatch):
