@@ -52,6 +52,9 @@ from vllm_ascend.models.deepseek_v41.cache_config import (
     is_deepseek_v41_cache,
     make_cache_groups,
     make_folded_index_cache_spec,
+    make_index_cache_spec,
+    make_mla_cache_spec,
+    make_swa_cache_spec,
 )
 from vllm_ascend.models.deepseek_v41.compressor import DeepseekV41Compressor
 from vllm_ascend.models.deepseek_v41.model import build_layer_plan
@@ -72,6 +75,51 @@ def mock_npu_rms_norm(monkeypatch):
     vllm_config.quant_config = None
     with set_current_vllm_config(vllm_config):
         yield
+
+
+@pytest.mark.parametrize("packed", [False, True])
+def test_cache_factory_page_layouts(monkeypatch, packed):
+    monkeypatch.setattr("vllm_ascend.models.deepseek_v41.cache_config.uses_a5_packed_cache", lambda: packed)
+    swa = make_swa_cache_spec(block_size=128, window_size=128, head_size=512, dtype=torch.bfloat16, cache_dtype="auto")
+    mla = make_mla_cache_spec(block_size=128, head_size=512, compress_ratio=2)
+    index = make_index_cache_spec(block_size=128, head_size=128, compress_ratio=2)
+
+    # Check physical bytes consumed by kernels, including scales. A3 keeps its
+    # BF16 MLA / INT8 index layout when the packed-cache capability is absent.
+    assert swa.unpadded_page_size_bytes == 128 * (544 if packed else 1024)
+    assert mla.unpadded_page_size_bytes == 64 * (320 if packed else 1024)
+    assert index.unpadded_page_size_bytes == 64 * (68 if packed else 130)
+    assert swa.dtype == mla.dtype == (torch.uint8 if packed else torch.bfloat16)
+    assert index.dtype == (torch.uint8 if packed else torch.int8)
+    assert index.scale_dtype == (torch.uint8 if packed else torch.float16)
+    assert swa.cache_dtype_str == ("a5_mxfp8_bf16_scale" if packed else "auto")
+
+
+@pytest.mark.parametrize(
+    "factory,kwargs",
+    [
+        (make_swa_cache_spec, dict(window_size=128, dtype=torch.bfloat16, cache_dtype="auto")),
+        (make_mla_cache_spec, dict(compress_ratio=2)),
+        (make_index_cache_spec, dict(compress_ratio=2)),
+    ],
+)
+def test_packed_cache_rejects_unsupported_head_size(monkeypatch, factory, kwargs):
+    monkeypatch.setattr("vllm_ascend.models.deepseek_v41.cache_config.uses_a5_packed_cache", lambda: True)
+    with pytest.raises(ValueError, match="requires head size"):
+        factory(block_size=128, head_size=96, **kwargs)
+    # The fixed packaged-operator ABI must not restrict other hardware.
+    monkeypatch.setattr("vllm_ascend.models.deepseek_v41.cache_config.uses_a5_packed_cache", lambda: False)
+    assert factory(block_size=128, head_size=96, **kwargs).head_size == 96
+
+
+def test_folded_index_page_layout():
+    spec = make_folded_index_cache_spec(block_size=128)
+    # Candidate gathering addresses sixteen groups of eight 68-byte rows.
+    assert get_storage_block_size(spec) == 16
+    assert spec.unpadded_page_size_bytes == 8704
+    assert spec.dtype == torch.uint8
+    with pytest.raises(ValueError, match="full 8-token groups"):
+        make_folded_index_cache_spec(block_size=127)
 
 
 @pytest.fixture
