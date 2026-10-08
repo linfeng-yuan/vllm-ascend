@@ -13,8 +13,6 @@ from vllm.distributed import get_ep_group, get_tp_group
 from vllm.logger import logger
 from vllm.model_executor.utils import set_weight_attrs
 
-from vllm_ascend.ops.dsv41_a5.package_loader import import_packaged_a5_module
-
 from .embedding import AscendParallelEngramEmbedding
 
 SCALE_GROUP = 32
@@ -24,8 +22,9 @@ MAX_NODES = 4
 
 
 def _elastic_buffer_cls():
-    # The public package initializer discovers and JIT-builds unrelated ops.
-    return import_packaged_a5_module("cann_ops_transformer.ops.mc2.common.elastic_buffer").ElasticBuffer
+    from cann_ops_transformer.ops.mc2.common.elastic_buffer import ElasticBuffer
+
+    return ElasticBuffer
 
 
 class EngramElasticGroup:
