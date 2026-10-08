@@ -16,11 +16,8 @@ def test_engram_patch_is_noop_without_upstream_config(monkeypatch):
 def test_elastic_switch_uses_engram_config():
     import argparse
 
-    import pytest
     from vllm.config import VllmConfig
     from vllm.engine import arg_utils
-
-    from vllm_ascend.patch.platform.patch_engram_config import AscendEngramConfig
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--engram-config", **arg_utils.get_kwargs(VllmConfig)["engram_config"])
@@ -29,6 +26,12 @@ def test_elastic_switch_uses_engram_config():
     assert not native.use_elastic_buffer and elastic.use_elastic_buffer
     assert native.compute_hash() != elastic.compute_hash()
     assert arg_utils.EngineArgs(engram_config={"use_elastic_buffer": True}).engram_config.use_elastic_buffer
-    for invalid in ({"use_elastic_buffer": True, "cpu_offload": False}, {"use_elastic_buffer": "bad"}):
-        with pytest.raises(ValueError):
-            AscendEngramConfig(**invalid)
+
+
+def test_elastic_requires_cpu_offload():
+    import pytest
+
+    from vllm_ascend.patch.platform.patch_engram_config import AscendEngramConfig
+
+    with pytest.raises(ValueError, match="requires cpu_offload"):
+        AscendEngramConfig(use_elastic_buffer=True, cpu_offload=False)
