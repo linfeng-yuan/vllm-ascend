@@ -1600,9 +1600,11 @@ def _validate_engram_config(vllm_config: VllmConfig) -> None:
         vllm_config.use_v2_model_runner
         and parallel_config.data_parallel_size > 1
         and not engram_config.dp_shared_memory
+        and not getattr(engram_config, "use_elastic_buffer", False)
     ):
         # V2 hashes slotless on runner state; DP-dummy ranks have no hash work,
-        # so every replica must share one table instead of running collectives.
+        # so native UVA replicas must share one table instead of running
+        # collectives. ElasticBuffer already provides independent one-sided reads.
         raise NotImplementedError(
             "The V2 model runner requires Engram DP shared tables: set "
             '"dp_shared_memory": true in --engram-config when data parallel '
@@ -1622,6 +1624,8 @@ def _validate_routing_replay_config(vllm_config: VllmConfig) -> None:
             "routed-experts capture (--enable-return-routed-experts) is only supported by the "
             "V2 model runner; set VLLM_USE_V2_MODEL_RUNNER=1 or drop the flag."
         )
+
+
 def _validate_parallel_config(vllm_config: VllmConfig) -> None:
     parallel_config = vllm_config.parallel_config
     if not vllm_config.use_v2_model_runner and parallel_config.prefill_context_parallel_size > 1:

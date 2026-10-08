@@ -1040,6 +1040,15 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         # Detect each table's checkpoint dtype independently of dense weights.
         # Host placement remains controlled by vLLM's EngramConfig.
         cpu_offload = engram_cpu_offload(vllm_config)
+        self.engram_elastic = bool(
+            vllm_config.engram_config and getattr(vllm_config.engram_config, "use_elastic_buffer", False)
+        )
+        if self.engram_elastic:
+            # Keep the optional ElasticBuffer payload out of the default UVA path.
+            from .engram.elastic import ElasticEngramEmbedding, EngramElasticGroup, preflight_elastic_checkpoint
+
+            if get_ep_group().world_size != vllm_config.parallel_config.data_parallel_size:
+                raise ValueError("Elastic Engram requires EP size to match DP size")
         self.engram_dp_shared_memory = resolve_dp_shared_memory(
             bool(vllm_config.engram_config and vllm_config.engram_config.dp_shared_memory)
         )
@@ -1052,27 +1061,40 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
             # missing index/key during weight iteration would mean paying for
             # it first.  `dummy` reads no checkpoint at all.
             if vllm_config.load_config.load_format != "dummy":
-                preflight_engram_checkpoint(
-                    self.engram_weight_root, config.engram_layer_ids, AscendParallelEngramEmbedding
-                )
+                if self.engram_elastic:
+                    preflight_elastic_checkpoint(
+                        self.engram_weight_root,
+                        config.engram_layer_ids,
+                        config.engram_num_embeddings,
+                        config.engram_head_dim,
+                    )
+                else:
+                    preflight_engram_checkpoint(
+                        self.engram_weight_root, config.engram_layer_ids, AscendParallelEngramEmbedding
+                    )
             for slot, (layer_id, rows) in enumerate(zip(config.engram_layer_ids, config.engram_num_embeddings)):
                 head_sizes = tuple(size for order in self.engram_layout.primes[slot] for size in order)
-                storage_dtype = torch.bfloat16 if vllm_config.quant_config is None else torch.int8
-                if vllm_config.load_config.load_format != "dummy":
-                    storage_dtype = engram_storage_dtype(self.engram_weight_root, layer_id)
-                    if storage_dtype == torch.float8_e4m3fn and not is_950():
-                        storage_dtype = torch.int8
-                elif is_950() and vllm_config.quant_config is not None:
-                    storage_dtype = torch.float8_e4m3fn
-                embed = AscendParallelEngramEmbedding(
-                    rows,
-                    config.engram_head_dim,
-                    head_sizes,
-                    slot,
-                    storage_dtype=storage_dtype,
-                    cpu_offload=cpu_offload,
-                    dp_shared_memory=self.engram_dp_shared_memory,
-                )
+                if self.engram_elastic:
+                    embed = ElasticEngramEmbedding(
+                        rows, config.engram_head_dim, head_sizes, EngramElasticGroup.from_vllm()
+                    )
+                else:
+                    storage_dtype = torch.bfloat16 if vllm_config.quant_config is None else torch.int8
+                    if vllm_config.load_config.load_format != "dummy":
+                        storage_dtype = engram_storage_dtype(self.engram_weight_root, layer_id)
+                        if storage_dtype == torch.float8_e4m3fn and not is_950():
+                            storage_dtype = torch.int8
+                    elif is_950() and vllm_config.quant_config is not None:
+                        storage_dtype = torch.float8_e4m3fn
+                    embed = AscendParallelEngramEmbedding(
+                        rows,
+                        config.engram_head_dim,
+                        head_sizes,
+                        slot,
+                        storage_dtype=storage_dtype,
+                        cpu_offload=cpu_offload,
+                        dp_shared_memory=self.engram_dp_shared_memory,
+                    )
                 embed.bind_checkpoint(self.engram_weight_root, f"layers.{layer_id}.engram.embed.weight")
                 self.layers[layer_id].engram.embed_tokens = embed
         self.engram_hash = None
@@ -1166,7 +1188,10 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         # history update (upstream's dummy_hashes branch). Sharing has no
         # per-step collectives, so it opts out.
         participates = hashing or (
-            self.engram_hash is not None and not self.engram_dp_shared_memory and get_engram_dp_size() > 1
+            self.engram_hash is not None
+            and not self.engram_elastic
+            and not self.engram_dp_shared_memory
+            and get_engram_dp_size() > 1
         )
         hashes = None
         mask = torch.empty(0, dtype=torch.bool, device=device)
@@ -1213,6 +1238,17 @@ class DeepseekV41Model(nn.Module, EagleModelMixin):
         tables = [self.layers[layer_id].engram.embed_tokens for layer_id in config.engram_layer_ids]
         if participates:
             assert hashes is not None
+            if self.engram_elastic:
+                from .engram.elastic import prepare_elastic_lookups
+
+                lookups = prepare_elastic_lookups(
+                    dict(zip(config.engram_layer_ids, tables)),
+                    hashes,
+                    output_buffers,
+                    output_tokens=output_tokens,
+                    ready_events=ready_events,
+                )
+                return lookups, mask if mask_output_buffer is None else mask_output_buffer
             # One DP gather feeds every layer sharing the split table.
             gathered = gather_engram_hashes(hashes, dp_shared_memory=self.engram_dp_shared_memory)
             for slot, (layer_id, table) in enumerate(zip(config.engram_layer_ids, tables)):

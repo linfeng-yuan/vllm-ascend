@@ -164,22 +164,25 @@
 #
 # ** 6. File: platform/patch_engram_config.py**
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#   1. `vllm.config.engram.EngramConfig.verify_model_config`
+#   1. `vllm.config.engram.EngramConfig.verify_model_config`,
+#      `vllm.engine.arg_utils.EngramConfig`, `vllm.engine.arg_utils.get_kwargs`
 #    Why:
 #       Upstream Engram model validation requires CUDA before the platform hook.
+#       Ascend needs an explicit ElasticBuffer selector in --engram-config.
 #    How:
 #       Keep upstream model/layer checks and lift only the CUDA requirement.
-#       Use the native EngramConfig and resolver. Ascend's normal platform hook
-#       supplies missing defaults and checks its model, topology and loader limits.
+#       Extend native EngramConfig with use_elastic_buffer=False and preserve
+#       it through CLI/dict parsing; keep the native resolver. Ascend's platform
+#       hook supplies missing defaults and checks model, topology and loader limits.
 #       Skip this patch when vLLM does not provide EngramConfig.
 #    Related PR (if no, explain why):
 #       https://github.com/vllm-project/vllm/pull/59171
 #       Tracks https://github.com/vllm-project/vllm/issues/59169.
 #       Removes CUDA-alike restrictions from model validation and defaults.
 #    Future Plan:
-#       Once the pinned vLLM includes that change, remove this patch and
-#       platform-side default creation. Keep Ascend's
-#       model, topology and loader restrictions in the normal platform hook.
+#       Once the pinned vLLM includes that change, remove the CUDA-gate patch
+#       and platform-side default creation. Keep the Ascend backend selector
+#       until upstream supports plugin-specific Engram configuration.
 #
 # ** 7. File: platform/patch_eplb.py**
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
