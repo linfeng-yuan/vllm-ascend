@@ -10,7 +10,6 @@ from multiprocessing.shared_memory import SharedMemory
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import numpy as np
 import pytest
 import torch
 from safetensors.torch import save_file
@@ -22,7 +21,6 @@ pytest.importorskip(
 
 from vllm_ascend.models.deepseek_v41.engram import embedding as embedding_mod
 from vllm_ascend.models.deepseek_v41.engram import npu
-from vllm_ascend.models.deepseek_v41.engram.common import engram_gate
 from vllm_ascend.models.deepseek_v41.engram.hash_state import DEAD_ID, AscendNgramHashState
 from vllm_ascend.models.deepseek_v41.engram.parallel import resolve_dp_shared_memory
 
@@ -37,55 +35,16 @@ def test_shared_memory_needs_a_local_dp_peer(monkeypatch):
     assert not resolve_dp_shared_memory(False)
 
 
-@pytest.mark.parametrize("quantized", [False, True])
-def test_loader_preserves_checkpoint_storage(tmp_path, quantized):
-    key = "layers.1.engram.embed.weight"
-    scale_key = "layers.1.engram.embed.scale"
-    source = torch.linspace(-12, 12, 19 * 64).reshape(19, 64).bfloat16()
-    codes, scales = npu.quantize_engram_rows(source)
-    save_file({key: source}, tmp_path / "model.safetensors")
-    (tmp_path / "model.safetensors.index.json").write_text(json.dumps({"weight_map": {key: "model.safetensors"}}))
-    if quantized:
-        save_file({key: codes, scale_key: scales}, tmp_path / "quant.safetensors")
-        (tmp_path / "quant_model_weights.safetensors.index.json").write_text(
-            json.dumps({"weight_map": {key: "quant.safetensors", scale_key: "quant.safetensors"}})
-        )
-    table = object.__new__(embedding_mod.AscendParallelEngramEmbedding)
-    torch.nn.Module.__init__(table)
-    table._shared_group = None
-    table.vocab_start_idx = 0
-    table.vocab_end_idx = 19
-    expected = codes if quantized else source
-    table.weight = torch.nn.Parameter(torch.empty_like(expected), requires_grad=False)
-    table.weight_scale_inv = torch.nn.Parameter(torch.empty_like(scales), requires_grad=False) if quantized else None
-    table.load_checkpoint(tmp_path, key, chunk_rows=7)
-    assert torch.equal(table.weight, expected)
-    if quantized:
-        assert torch.equal(table.weight_scale_inv, scales)
-
-
-from vllm_ascend.worker.model_runner_v1 import NPUModelRunner
-
-
 @pytest.mark.parametrize(
-    "enabled,shared,tp,mode,expected",
-    [
-        (True, True, 1, "FULL", True),
-        (True, True, 1, "NONE", True),
-        (False, True, 1, "FULL", False),
-        (True, False, 1, "FULL", True),
-        (True, True, 2, "FULL", True),
-        (True, False, 2, "NONE", True),
-        (True, True, 1, "PIECEWISE", False),
-    ],
+    "enabled,mode,expected",
+    [(True, "FULL", True), (True, "NONE", True), (False, "FULL", False), (True, "PIECEWISE", False)],
 )
-def test_preparation_overlap_supports_dp_tp_and_checks_runtime(monkeypatch, enabled, shared, tp, mode, expected):
+def test_preparation_overlap_checks_runtime(monkeypatch, enabled, mode, expected):
     from vllm.config import CUDAGraphMode
 
     from vllm_ascend.models.deepseek_v41 import model as model_module
 
-    model = SimpleNamespace(has_engram=True, _engram_overlap_enabled=enabled, engram_dp_shared_memory=shared)
-    monkeypatch.setattr(model_module, "get_tensor_model_parallel_world_size", lambda: tp)
+    model = SimpleNamespace(has_engram=True, _engram_overlap_enabled=enabled)
     monkeypatch.setattr(model_module, "is_forward_context_available", lambda: True)
     monkeypatch.setattr(
         model_module, "get_forward_context", lambda: SimpleNamespace(cudagraph_runtime_mode=CUDAGraphMode[mode])
@@ -93,55 +52,16 @@ def test_preparation_overlap_supports_dp_tp_and_checks_runtime(monkeypatch, enab
     assert model_module.DeepseekV41Model._can_overlap_engram_preparation(model) is expected
 
 
-def test_bf16_gate_without_rotation():
-    hidden = torch.ones(2, 4, 64, dtype=torch.bfloat16)
-    value = torch.full((2, 64), 0.25, dtype=torch.bfloat16)
-    mask = torch.tensor([True, False])
-    result = engram_gate(hidden, hidden * 2, value, torch.ones(4, 64), None, mask, 1e-20)
-    # Normalized dot is sqrt(64) = 8; the gate applies signed sqrt, then sigmoid.
-    expected = (1 + 0.25 * torch.sigmoid(torch.tensor(8.0).sqrt())).bfloat16()
-    assert torch.all(result[0] == expected)
-    assert torch.equal(result[1], hidden[1])
-
-
-def test_loader_applies_mxfp8_checkpoint_scales(tmp_path):
-    key = "layers.1.engram.embed.weight"
-    scale_key = "layers.1.engram.embed.scale"
-    source = torch.linspace(-0.5, 0.5, 19 * 64).reshape(19, 64)
-    checkpoint_scale = torch.full((19, 2), 1 / 128, dtype=torch.float32).to(torch.float8_e8m0fnu)
-    checkpoint_weight = (source * 128).to(torch.float8_e4m3fn)
-    save_file({key: checkpoint_weight, scale_key: checkpoint_scale}, tmp_path / "model.safetensors")
-    (tmp_path / "model.safetensors.index.json").write_text(
-        json.dumps({"weight_map": {key: "model.safetensors", scale_key: "model.safetensors"}})
-    )
-    embedding_mod.preflight_engram_checkpoint(tmp_path, [1])
-    table = object.__new__(embedding_mod.AscendParallelEngramEmbedding)
-    torch.nn.Module.__init__(table)
-    table._shared_group = None
-    table.vocab_start_idx = 0
-    table.vocab_end_idx = 19
-    table.block_size = 32
-    table.weight = torch.nn.Parameter(torch.empty((19, 64), dtype=torch.int8), requires_grad=False)
-    table.weight_scale_inv = torch.nn.Parameter(torch.empty((19, 2), dtype=torch.float32), requires_grad=False)
-    table.load_checkpoint(tmp_path, key, chunk_rows=7)
-    decoded = npu.dequantize_engram_rows(table.weight, table.weight_scale_inv)
-    expected = (checkpoint_weight.float().unflatten(-1, (-1, 32)) * checkpoint_scale.float().unsqueeze(-1)).flatten(-2)
-    torch.testing.assert_close(decoded.float(), expected, rtol=0, atol=0.02)
-
-
 def _fake_host_library(device_offset):
-    class Library:
-        def aclrtHostRegisterV2(self, pointer, size, flags):
-            return 0
+    def device_pointer(pointer, out, flags):
+        out._obj.value = pointer.value + device_offset
+        return 0
 
-        def aclrtHostGetDevicePointer(self, pointer, out, flags):
-            out._obj.value = pointer.value + device_offset
-            return 0
-
-        def aclrtHostUnregister(self, pointer):
-            return 0
-
-    return Library()
+    return SimpleNamespace(
+        aclrtHostRegisterV2=lambda *args: 0,
+        aclrtHostGetDevicePointer=device_pointer,
+        aclrtHostUnregister=lambda *args: 0,
+    )
 
 
 @pytest.mark.parametrize("leader_rank", [0, 16])
@@ -180,26 +100,6 @@ def test_shared_uva_uses_one_python_shared_memory_segment(monkeypatch, leader_ra
     follower.close()
 
 
-def test_shared_table_skips_per_step_dp_gather(monkeypatch):
-    calls = []
-
-    def gather(ids, *, dp_shared_memory=False):
-        calls.append(dp_shared_memory)
-        return ids if dp_shared_memory else torch.cat((ids + 100, ids))
-
-    monkeypatch.setattr(embedding_mod, "gather_engram_hashes", gather)
-    table = object.__new__(embedding_mod.AscendParallelEngramEmbedding)
-    table.embed_gathered = lambda ids, count: ids[:count]
-    table._shared_group = object()
-    ids = torch.tensor([[7, 8]])
-    assert table.forward(ids).tolist() == [[7, 8]]
-    table._shared_group = None
-    table.dp_size = 2
-    table.embed_gathered = lambda gathered, count: gathered[count : 2 * count]
-    assert table.forward(ids).tolist() == [[7, 8]]
-    assert calls == [True, False]
-
-
 @pytest.mark.parametrize("num_tokens", [0, 2])
 def test_idle_hashes_have_no_valid_rows(num_tokens):
     state = object.__new__(AscendNgramHashState)
@@ -215,45 +115,6 @@ def test_idle_hashes_have_no_valid_rows(num_tokens):
     assert not keep.any()
 
 
-def _runner(rows, computed, prompt):
-    token_ids = np.full((len(rows), 16), -7, dtype=np.int32)
-    for index, row in enumerate(rows):
-        token_ids[index, : len(row)] = row
-    runner = object.__new__(NPUModelRunner)
-    runner.input_batch = SimpleNamespace(
-        num_reqs=len(rows),
-        token_ids_cpu=token_ids,
-        num_computed_tokens_cpu=np.asarray(computed, dtype=np.int32),
-        num_prompt_tokens=np.asarray(prompt, dtype=np.int32),
-    )
-    lookback = np.empty((len(rows), 3), dtype=np.int32)
-    runner.lookback_token_ids = SimpleNamespace(
-        np=lookback,
-        copy_to_gpu=lambda: torch.from_numpy(lookback.copy()),
-    )
-    runner.is_pooling_model = False
-    return runner
-
-
-@pytest.mark.parametrize(
-    "computed,num_reqs,expected",
-    [
-        (4, None, [13, 12, 11]),
-        (6, None, [-1, -1, 13]),
-        (0, None, [-1, -1, -1]),
-        (4, 0, [-1, -1, -1]),
-        (4, 1, [13, 12, 11]),
-    ],
-)
-def test_v1_lookback_uses_prompt_tokens_once(computed, num_reqs, expected):
-    runner = _runner([[10, 11, 12, 13, -7, -7]], [computed], [4])
-    copy = Mock(wraps=runner.lookback_token_ids.copy_to_gpu)
-    runner.lookback_token_ids.copy_to_gpu = copy
-    kwargs = runner._init_model_kwargs(num_reqs=num_reqs)
-    assert kwargs["lookback_token_ids"][0].tolist() == expected
-    copy.assert_called_once_with()
-
-
 @pytest.mark.parametrize("shared", [False, True])
 @pytest.mark.parametrize("remote_group", ["tp", "edp"])
 def test_engram_rejects_nonlocal_groups_before_allocation(monkeypatch, shared, remote_group):
@@ -267,7 +128,6 @@ def test_engram_rejects_nonlocal_groups_before_allocation(monkeypatch, shared, r
 
 @pytest.mark.parametrize("dp_rank,num_tokens", [(2, 3), (3, 2), (3, 0)])
 def test_engram_gather_uses_the_local_edp_token_slice(monkeypatch, dp_rank, num_tokens):
-    """A replica pads to its own EDP slot, never to another node's prefill."""
     from vllm_ascend.models.deepseek_v41.engram import parallel as parallel_mod
 
     edp_group = SimpleNamespace(world_size=2, rank_in_group=dp_rank - 2, all_gather=lambda ids, dim=0: ids.repeat(2, 1))

@@ -31,46 +31,35 @@ def runtime(monkeypatch):
 
 
 def test_fixed_slot_ignores_rank_local_metadata(runtime):
-    _, _, context = runtime
-    # These are the unsynchronized metadata vectors seen by two DP ranks.
+    context = runtime[2]
     for local_count in (0, 1, 42, 48, 96):
         context.dp_metadata.num_tokens_across_dp_cpu.fill_(local_count)
         assert parallel.engram_gathered_num_tokens() == 96
 
 
-@pytest.mark.parametrize("mode", ["prefill", "recompute_off", "profile", "uniform_warmup"])
-def test_synchronized_paths_keep_metadata_slot(runtime, mode):
+def test_synchronized_paths_keep_metadata_slot(runtime):
     config, ascend, context = runtime
-    if mode == "prefill":
-        config.kv_transfer_config.is_kv_consumer = False
-        config.kv_transfer_config.is_kv_producer = True
-    elif mode == "recompute_off":
-        ascend.scheduler_config.recompute_scheduler_enable = False
-    elif mode == "profile":
-        context.in_profile_run = True
-    else:
-        context.engram_uniform_dp_warmup = True
     context.dp_metadata.num_tokens_across_dp_cpu = torch.tensor([900, 1024])
-    assert parallel.engram_gathered_num_tokens() == 1024
+    for mode in ("prefill", "recompute_off", "profile", "uniform_warmup"):
+        config.kv_transfer_config.is_kv_consumer = mode != "prefill"
+        ascend.scheduler_config.recompute_scheduler_enable = mode != "recompute_off"
+        context.in_profile_run = mode == "profile"
+        context.engram_uniform_dp_warmup = mode == "uniform_warmup"
+        assert parallel.engram_gathered_num_tokens() == 1024
 
 
-@pytest.mark.parametrize(
-    "max_batched,max_seqs,spec,potential,expected",
-    [
+def test_fixed_slot_covers_eager_decode_and_graph_padding(runtime, monkeypatch):
+    config = runtime[0]
+    for batched, seqs, spec, potential, expected in (
         (2048, 128, 5, 512, 768),
         (640, 128, 5, 512, 640),
         (1024, 16, None, 32, 32),
-    ],
-)
-def test_fixed_slot_covers_eager_decode_and_graph_padding(
-    runtime, monkeypatch, max_batched, max_seqs, spec, potential, expected
-):
-    config, _, _ = runtime
-    config.scheduler_config.max_num_batched_tokens = max_batched
-    config.scheduler_config.max_num_seqs = max_seqs
-    config.speculative_config = None if spec is None else SimpleNamespace(num_speculative_tokens=spec)
-    monkeypatch.setattr(parallel, "get_potential_max_tokens", lambda: potential)
-    assert parallel.engram_gathered_num_tokens() == expected
+    ):
+        config.scheduler_config.max_num_batched_tokens = batched
+        config.scheduler_config.max_num_seqs = seqs
+        config.speculative_config = None if spec is None else SimpleNamespace(num_speculative_tokens=spec)
+        monkeypatch.setattr(parallel, "get_potential_max_tokens", lambda potential=potential: potential)
+        assert parallel.engram_gathered_num_tokens() == expected
 
 
 def test_overflow_fails_before_collective_and_bypasses_do_not_need_metadata(runtime, monkeypatch):
