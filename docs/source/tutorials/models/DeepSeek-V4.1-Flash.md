@@ -16,7 +16,9 @@ speculative decoding. These designs reduce the global KV cache footprint to
 one eighth of DeepSeek-V4-Flash. The model accepts text and images and supports
 a continuously adjustable reasoning effort from 1 to 100.
 
-vLLM Ascend supports W8A8 deployment on Atlas 800 A3 and A2 servers. This
+vLLM Ascend supports W8A8 deployment on Atlas 800 A3 and A2 servers. A5
+deployment uses the original mixed-quantization checkpoint and model runner V2;
+see [A5 deployment](#a5-deployment). This
 guide provides a single-node colocated A3 configuration and a two-node A3
 Prefill-Decode (PD) disaggregated configuration.
 
@@ -34,8 +36,8 @@ configuration.
 The A3 configurations in this guide use W8A8 weights and INT8 Engram storage.
 The single-node colocated configuration uses DP4/TP4. The PD configuration
 uses DP4/TP4 on the Prefill node, DP8/TP2 on the Decode node, DSpark
-speculative decoding, and `FULL_DECODE_ONLY` ACL Graph on Decode. The
-DeepSeek-V4.1-Flash model currently supports only model runner V1 on Ascend, so
+speculative decoding, and `FULL_DECODE_ONLY` ACL Graph on Decode.
+The A3 deployment in this guide uses model runner V1, so
 all A3 scripts set `VLLM_USE_V2_MODEL_RUNNER=0` explicitly.
 
 ## 3 Prerequisites
@@ -841,7 +843,7 @@ For common environment, installation, and parameter issues, refer to the
   servers in 1P1D mode, with an Ascend W8A8 checkpoint and INT8 Engram storage.
 - The A2 configuration is retained unchanged and is not revalidated by this
   update. Its revised configuration will be documented separately.
-- DeepSeek-V4.1-Flash currently supports only model runner V1 on Ascend. Keep
+- The A3 configurations use model runner V1. Keep
   `VLLM_USE_V2_MODEL_RUNNER=0` in every A3 serving script. Pipeline parallelism
   is not covered by this guide.
 - In the A3 PD example, Prefill runs in eager mode. Decode uses
@@ -849,3 +851,83 @@ For common environment, installation, and parameter issues, refer to the
   DSpark draft model.
 - Production performance qualification and task-level accuracy evaluation are
   not complete.
+
+## A5 deployment
+
+### Hardware and software requirements
+
+Use model runner V2 (`VLLM_USE_V2_MODEL_RUNNER=1`) on A5. The A5 path uses
+the original mixed-quantization checkpoint with `--quantization deepseek_v4_fp8`,
+not the A3 W8A8 checkpoint. The validated topology is eight devices per node,
+DP8/TP1 with expert parallelism, and Engram CPU offload with shared memory.
+Ensure the host has sufficient RAM and shared memory for the Engram tables.
+
+The packaged attention operators require Linux aarch64, Python 3.11 and the
+32-core A5 configuration. The validated operator packages are:
+
+- `cannbotdsl-0.4.dev28-cp311-cp311-manylinux_2_34_aarch64.whl`
+- `cannbot_arena_net_ops-0.1.0-cp311-cp311-linux_aarch64.whl`
+
+Obtain compatible wheels from the operator package provider. Different Arena
+builds can have the same filename and version; confirm that the package exposes
+the V4.1 interfaces before deployment. Install them without replacing the base
+image's dependencies:
+
+```shell
+python -m pip install --no-deps /path/to/cannbotdsl-0.4.dev28-cp311-cp311-manylinux_2_34_aarch64.whl \
+  /path/to/cannbot_arena_net_ops-0.1.0-cp311-cp311-linux_aarch64.whl
+```
+
+These wheels supplement the compiled vLLM Ascend extension and its operators;
+they do not replace them. The optional wheels are imported when their model
+path is used, so unrelated models do not require their installation.
+
+The validated CANN 9.2 environment also needs the following workaround for
+the cannbotdsl AICPU compiler's C++ header search. Use the actual toolkit path
+in your image; this is an operator-package dependency, not a vLLM cache setting:
+
+```shell
+aicpu_headers=/usr/local/Ascend/cann-9.2.0/tools/hcc/aarch64-target-linux-gnu/include/c++/14.3.0
+export CPLUS_INCLUDE_PATH="$aicpu_headers:$aicpu_headers/aarch64-target-linux-gnu:$aicpu_headers/backward"
+```
+
+### Serving configuration
+
+Start from the A3 guide's networking and PD proxy setup, but use the A5 model
+and runner configuration on both nodes:
+
+```shell
+export VLLM_USE_V2_MODEL_RUNNER=1
+```
+
+The following serving arguments describe the validated A5 topology:
+
+```shell
+--data-parallel-size 8 --tensor-parallel-size 1 \
+--enable-expert-parallel --enable-ep-weight-filter \
+--quantization deepseek_v4_fp8 --block-size 128 \
+--engram-config '{"cpu_offload":true,"dp_shared_memory":true}' \
+--tokenizer-mode deepseek_v41 --reasoning-parser deepseek_v41 \
+--tool-call-parser deepseek_v41 --enable-auto-tool-choice \
+--async-scheduling
+```
+
+For 1P1D, configure the Mooncake connector with DP8/TP1 for both Prefill and
+Decode. Prefill uses `--enforce-eager` and
+`--speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'`.
+Decode uses `--compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'` and
+`--speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":false}'`.
+Set `multistream_engram_overlap` to `false` in Prefill's `--additional-config`
+and `true` in Decode's configuration. For colocated serving, keep it disabled
+until the intended prefill workload has been validated.
+
+For image requests, set `--limit-mm-per-prompt '{"image":7}'` on both nodes;
+the text-only configuration `'{"image":0}'` disables images. The multimodal
+validation configuration uses `--max-num-seqs 16` and
+`--max-num-batched-tokens 4096`. Size these limits together with the context
+length and device memory budget. Decode graph mode does not imply that the
+vision encoder runs in a graph.
+
+The 28-core operator configuration, QW interleaved operators and automatic
+selection of Engram overlap for prefill versus decode in colocated serving
+remain outside this validated configuration.
