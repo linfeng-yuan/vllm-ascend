@@ -2,7 +2,30 @@
 
 Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
 
-## 最新：主线四个 PR + UVA Engram，D0/DP0 running=12（第三次，2026-10-09）
+## 最新：主线四个 PR + AICPU URMA Engram，D0/DP0 running=12（第四次，2026-10-10）
+
+[打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-prs4-urma-dp0-running12-20261010)
+
+- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-urma-dp0-running12-20261010/dsv41-a5-main-prs4-urma-dp0-running12-ascend-output-20261010.tar.gz)
+- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-urma-dp0-running12-20261010/SHA256SUMS)
+- SHA256：`f975fb2e185ed1b50b48ee4b816424c44c83a19b9bb75acddaece6fbac0205e1`
+
+本压缩包只包含 D0/DP0/卡 0 已解析的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
+
+| 项目 | 配置 / 结果 |
+| --- | --- |
+| Engram | P、D 均显式启用 `engram_lookup_backend=aicpu_urma_cube_hbm`；Profile 中出现 `EngramUrmaGather` |
+| 无 profiling 性能 | 384/384 成功，全部输出 4096；TPOT 5.7 ms；AISBench output throughput 48,551.8969 tokens/s |
+| 无 profiling 的 vLLM 打屏 | 32 个 D 都实测到 running=12；30 个稳定 running=12 DP 的峰值 2219.0～2225.2 tokens/s、均值 2221.73，对应 ITL 5.393～5.408 ms/token；DP0/1 的窗口峰值分别为 2213.6@running11、2216.0@running11 |
+| Profiling 本轮性能 | 384/384 成功，全部输出 4096；TPOT 6.2 ms；AISBench output throughput 49,215.1912 tokens/s |
+| Profiling 轮 vLLM 打屏 | 32 个 D 的峰值均对应 running=12、waiting=0；2210.7～2216.4 tokens/s，均值 2212.3125；换算 ITL 5.414～5.428 ms/token，均值 5.424 ms/token |
+| 采集 | D0/DP0/卡 0；触发时 running=12、waiting=0；profiler 启停请求间隔 2.000 秒 |
+| 解析 | 161,639 条 kernel；84 个 step 标记；step P50 22.706 ms、P90 24.798 ms；P50 / synthetic 4.15 ≈ 5.471 ms/token |
+| 对比 | AISBench 整体 output throughput 比 UVA 低 1.96%；`EngramUrmaGather` 约 588.584 us/次，是 UVA gather 约 200.946 us/次的 2.93 倍，本负载下 URMA 不是更优开关 |
+
+Release 正文包含 DP0～DP31 的逐 DP vLLM 打屏吞吐、每行对应的 running，以及 ITL/step interval 的换算关系。
+
+## 历史：主线四个 PR + UVA Engram，D0/DP0 running=12（第三次，2026-10-09）
 
 [打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-prs4-uva-dp0-running12-20261009)
 
@@ -20,7 +43,7 @@ Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不
 | D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 4.15、force EPLB、recompute scheduler |
 | 图配置 | NPUGraphEx 开启；Static Kernel / Super Kernel 关闭；capture sizes `[72, 96]` |
 | 负载 | 384 并发、384 请求、输入 129054 tokens、输出 4096 tokens |
-| 无 profiling 性能 | 384 成功、0 失败；TPOT 5.7 ms；AISBench output throughput 49,520.4541 tokens/s；32 个 D 的打屏峰值 2215.4～2222.6 tokens/s，均值 2217.87 tokens/s（各 DP 峰值不求和） |
+| 无 profiling 性能 | 384 成功、0 失败；TPOT 5.7 ms；AISBench output throughput 49,520.4541 tokens/s；32 个 D 在 running=12、waiting=0 时的打屏峰值 2215.4～2222.6 tokens/s，均值 2217.87；换算 ITL 5.399～5.417 ms/token（各 DP 峰值不求和） |
 | Profiling 本轮性能 | 384 成功、0 失败，全部输出 4096 tokens；TPOT 6.2 ms；AISBench output throughput 49,476.0217 tokens/s |
 | 采集目标 | D0 / DP0 / 卡 0，触发时 running=12、waiting=0；profiler 启停请求间隔 2.000 秒 |
 | 解析结果 | 158,058 条 kernel 记录；83 个 `_expand_idx_mapping_kernel` 标记、82 个相邻 step 间隔 |
