@@ -570,6 +570,9 @@ class AscendConfig:
     # FULL graphs wait on descriptor-specific external events at consumers.
     # Opt in until the workload demonstrates an end-to-end benefit.
     multistream_engram_overlap: bool = False
+    # Experimental direct MXFP8 Cube projection with AICPU URMA host gather.
+    # Preserves checkpoint codes/scales; differs from BF16 re-quantization.
+    engram_lookup_backend: Literal["uva", "aicpu_urma_cube_hbm"] = "uva"
     enable_prefill_mc2: bool = False
     multistream_overlap_shared_expert: bool = False
     enable_kv_nz: bool = False
