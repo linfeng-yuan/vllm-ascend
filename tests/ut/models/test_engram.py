@@ -22,9 +22,25 @@ pytest.importorskip(
 
 from vllm_ascend.models.deepseek_v41.engram import embedding as embedding_mod
 from vllm_ascend.models.deepseek_v41.engram import npu
-from vllm_ascend.models.deepseek_v41.engram.common import engram_gate
+from vllm_ascend.models.deepseek_v41.engram.common import engram_gate, load_engram_rotation_block
 from vllm_ascend.models.deepseek_v41.engram.hash_state import DEAD_ID, AscendNgramHashState
 from vllm_ascend.models.deepseek_v41.engram.parallel import resolve_dp_shared_memory
+
+
+def test_rotation_loader_preserves_checkpoint_basis_and_rejects_cross_block_mixing(tmp_path):
+    torch.testing.assert_close(load_engram_rotation_block(str(tmp_path), 64), torch.eye(32))
+    block = torch.eye(32).roll(1, dims=1)
+    rotation = torch.block_diag(block, block)
+    path = tmp_path / "rotation.safetensors"
+    save_file({"global_rotation": rotation}, path)
+    loaded = load_engram_rotation_block(str(tmp_path), 64, path)
+    assert loaded.is_contiguous()
+    torch.testing.assert_close(loaded, block)
+
+    rotation[0, 32] = 1
+    save_file({"global_rotation": rotation}, path)
+    with pytest.raises(ValueError, match="repeated block32"):
+        load_engram_rotation_block(str(tmp_path), 64, path)
 
 
 def test_shared_memory_needs_a_local_dp_peer(monkeypatch):

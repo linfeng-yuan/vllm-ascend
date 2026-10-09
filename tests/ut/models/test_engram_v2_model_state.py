@@ -184,6 +184,51 @@ def test_capacity_is_checked_before_submission(runtime):
     model.prepare_engram.assert_not_called()
 
 
+@pytest.mark.parametrize("mode", [CUDAGraphMode.NONE, CUDAGraphMode.FULL])
+def test_disabled_overlap_uses_main_stream_even_with_known_graph_mode(runtime, mode):
+    calls, _, _, _ = runtime
+    model = make_model()
+    model._engram_overlap_enabled = False
+    prepared = []
+
+    def prepare(*args, **kwargs):
+        prepared.append(torch.npu.current_stream().name)
+        assert kwargs["ready_events"] is None
+        assert kwargs["mask_ready_event"] is None
+
+    model.prepare_engram = Mock(side_effect=prepare)
+    binding = model.prime_engram_v2_graph_inputs(4)
+    result = model.prepare_engram_inputs(torch.arange(4), torch.arange(4), 4, cg_mode=mode)
+
+    assert prepared == ["main"]
+    assert result["engram_lookups"] is binding["engram_lookups"]
+    assert "engram_pending" not in result
+    assert "engram_graph_events" not in binding
+    assert model._engram_prepare_stream is None
+    assert not calls
+
+
+def test_padding_cannot_truncate_live_engram_tokens(runtime):
+    model = make_model()
+    model.prepare_engram = Mock()
+    with pytest.raises(ValueError, match="capacity"):
+        model.prepare_engram_inputs(torch.arange(4), torch.arange(4), 2, cg_mode=CUDAGraphMode.FULL)
+    model.prepare_engram.assert_not_called()
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_metadata_is_joined_even_when_engram_retirement_raises(failed):
+    state = state_mod.EngramModelState.__new__(state_mod.EngramModelState)
+    state.model = SimpleNamespace(retire_engram_lookups=Mock(side_effect=RuntimeError("retire failed")))
+    state.device_metadata = Mock()
+
+    with pytest.raises(RuntimeError, match="retire failed"):
+        state.finish_execution(failed=failed)
+
+    state.model.retire_engram_lookups.assert_called_once_with(reset_events=failed)
+    state.device_metadata.finish.assert_called_once_with()
+
+
 def test_failed_producer_resets_primed_bucket_events(runtime):
     calls, _, _, _ = runtime
     model = make_model()

@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Regression tests for V4.1 index selection and compressor scheduling."""
 
+from contextlib import contextmanager
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import torch
@@ -288,3 +290,110 @@ def test_a5_indexer_uses_prequantized_query(monkeypatch):
     )
     assert result[0] is quantized
     assert result[1].shape == (2, 1, 2, 2)
+
+
+@pytest.mark.parametrize("was_enabled", [False, True])
+def test_deferred_metadata_restores_nested_scope_after_failure(monkeypatch, was_enabled):
+    builder = dsa_v41.AscendDSAV41MetadataBuilder.__new__(dsa_v41.AscendDSAV41MetadataBuilder)
+    builder._device_metadata_enabled = was_enabled
+    builder._device_metadata_in_graph = False
+    builder._uses_a5_packed_cache = True
+    monkeypatch.setattr(builder, "prepare_source_rope", lambda: None)
+
+    with builder.defer_device_metadata(in_graph=False):
+        with pytest.raises(RuntimeError, match="build failed"), builder.defer_device_metadata(in_graph=True):
+            raise RuntimeError("build failed")
+        assert builder._device_metadata_enabled
+        assert not builder._device_metadata_in_graph
+    assert builder._device_metadata_enabled is was_enabled
+    assert not builder._device_metadata_in_graph
+
+
+def test_unsupported_capture_does_not_change_builder_state(monkeypatch):
+    builder = dsa_v41.AscendDSAV41MetadataBuilder.__new__(dsa_v41.AscendDSAV41MetadataBuilder)
+    builder._device_metadata_enabled = False
+    builder._device_metadata_in_graph = False
+    builder._uses_a5_packed_cache = False
+    monkeypatch.setattr(builder, "prepare_source_rope", lambda: pytest.fail("must reject before preparing buffers"))
+    with pytest.raises(ValueError, match="A5 packed-cache"), builder.defer_device_metadata(in_graph=True):
+        pytest.fail("unsupported capture entered")
+    assert not builder._device_metadata_enabled
+    assert not builder._device_metadata_in_graph
+
+
+def test_indexer_preparation_orders_streams_and_quantizes_only_once(monkeypatch):
+    trace = []
+    active = ["main"]
+
+    class Stream:
+        def __init__(self, name):
+            self.name = name
+
+        def record_event(self):
+            event = object()
+            trace.append((self.name, "record", event))
+            return event
+
+        def wait_event(self, event):
+            trace.append((self.name, "wait", event))
+
+    main, aux = Stream("main"), Stream("aux")
+
+    @contextmanager
+    def switch(stream, *, enabled):
+        assert enabled
+        active[0] = stream.name
+        try:
+            yield
+        finally:
+            active[0] = "main"
+
+    monkeypatch.setattr(torch.npu, "current_stream", lambda: main)
+    monkeypatch.setattr(dsa_v41, "dsv4_dsa_overlap_stream", lambda: aux)
+    monkeypatch.setattr(dsa_v41, "npu_stream_switch", switch)
+    query, weights = torch.ones(2, 1, 8), torch.ones(2, 1)
+    hidden = torch.arange(32).reshape(4, 8)
+
+    def project_weights(value):
+        assert active[0] == "aux"
+        torch.testing.assert_close(value, hidden[:2])
+        return weights
+
+    def apply_rope(*args):
+        assert active[0] == "main"
+
+    def quantize(value):
+        assert active[0] == "aux"
+        assert value is query
+        return torch.ones(2, 1, 4, dtype=torch.uint8), torch.ones(2, 1, 1)
+
+    indexer = SimpleNamespace(
+        project_query=Mock(return_value=query),
+        project_weights=project_weights,
+        apply_query_rope=apply_rope,
+        quantize_query=Mock(side_effect=quantize),
+    )
+    attn = SimpleNamespace(indexer=indexer)
+    metadata = SimpleNamespace(
+        swa=SimpleNamespace(num_actual_tokens=2),
+        indexer=SimpleNamespace(cache=SimpleNamespace(max_cache_seq_len=1)),
+    )
+    impl = _impl(SimpleNamespace(has_long_context=True, is_index_source=True))
+    prepared = impl._prepare_indexer_inputs(attn, hidden, query, None, None, metadata)
+    assert prepared.query is query and prepared.weights is weights
+    assert [(s, action) for s, action, _ in trace] == [
+        ("main", "record"),
+        ("aux", "wait"),
+        ("aux", "record"),
+        ("main", "wait"),
+    ]
+    assert trace[0][2] is trace[1][2]
+    assert trace[2][2] is trace[3][2]
+    impl._quantize_indexer_query(attn, prepared, metadata)
+    submitted = len(trace)
+    impl._quantize_indexer_query(attn, prepared, metadata)
+    assert len(trace) == submitted
+    indexer.quantize_query.assert_called_once_with(query)
+    assert prepared.quantize_done is trace[-1][2]
+    assert [(s, action) for s, action, _ in trace[-3:]] == [("main", "record"), ("aux", "wait"), ("aux", "record")]
+    assert trace[-3][2] is trace[-2][2]

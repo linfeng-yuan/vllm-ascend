@@ -19,6 +19,7 @@ those buffers during FULL graph capture so the eager prepare_engram path
 from types import SimpleNamespace
 from unittest.mock import Mock, create_autospec
 
+import pytest
 import torch
 from vllm.v1.worker.gpu.model_states.default import DefaultModelState
 
@@ -193,3 +194,39 @@ def test_prepare_dummy_inputs_skips_models_without_engram(monkeypatch):
     state = _state(SimpleNamespace())
 
     assert state.prepare_dummy_inputs(num_reqs=4, num_tokens=64) == {}
+
+
+def test_skipped_ring_update_still_routes_without_mutating_history(monkeypatch):
+    from vllm_ascend.worker.v2.model_states import default
+
+    monkeypatch.setattr(default, "ring_state_update_skipped", lambda: True)
+    model = _v41_model()
+    state = _state(model)
+    state.kv_cache_config = SimpleNamespace(
+        kv_cache_groups=[SimpleNamespace(layer_names=[model.engram_cache_layer_name])]
+    )
+    # These are valid views: suppression must come from the skipped-update scope.
+    state.block_tables = (torch.ones(2, 4, dtype=torch.int32),)
+    state.slot_mappings = torch.arange(8).reshape(1, 8)
+    batch = _batch()
+    batch.num_tokens_after_padding = 4
+
+    state.prepare_engram_inputs(batch, req_states=None)
+
+    args, kwargs = model.prepare_engram_inputs.call_args
+    assert kwargs == {}
+    assert args[2] == 4
+    torch.testing.assert_close(args[0], batch.input_ids[:4])
+    torch.testing.assert_close(args[1], batch.positions[:4])
+
+
+@pytest.mark.parametrize("failed", [False, True])
+@pytest.mark.parametrize("has_metadata", [False, True])
+def test_finish_execution_joins_metadata_on_success_and_failure(failed, has_metadata):
+    state = _state(SimpleNamespace())
+    metadata = Mock()
+    state.device_metadata = metadata if has_metadata else None
+
+    state.finish_execution(failed=failed)
+
+    assert metadata.finish.call_count == int(has_metadata)
