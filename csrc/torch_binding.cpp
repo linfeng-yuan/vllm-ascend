@@ -1474,11 +1474,14 @@ at::Tensor npu_quant_matmul_out_npu(
     TORCH_CHECK(
         out.dim() == 2 && out.is_contiguous() && out.size(0) == x1.size(0) && out.size(1) == x2.size(1),
         "out must be a contiguous [x1.rows, x2.cols] tensor.");
+    // EXEC_NPU_CMD converts its arguments through non-const lvalue
+    // references, so the optional tensor placeholders cannot be temporaries.
+    c10::optional<at::Tensor> no_tensor = c10::nullopt;
     EXEC_NPU_CMD(aclnnQuantMatmulV5, x1, x2, x1_scale, x2_scale,
-                 static_cast<c10::optional<at::Tensor>>(c10::nullopt), // yScale
-                 static_cast<c10::optional<at::Tensor>>(c10::nullopt), // x1Offset
-                 static_cast<c10::optional<at::Tensor>>(c10::nullopt), // x2Offset
-                 static_cast<c10::optional<at::Tensor>>(c10::nullopt), // yOffset
+                 no_tensor, // yScale
+                 no_tensor, // x1Offset
+                 no_tensor, // x2Offset
+                 no_tensor, // yOffset
                  bias, /*transpose_x1=*/ false, /*transpose_x2=*/ false, group_size, out);
     return out;
 }
