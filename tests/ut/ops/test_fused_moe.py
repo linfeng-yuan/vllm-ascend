@@ -738,7 +738,8 @@ def test_hash_router_preserves_fp32_weights_and_explicit_input_ids(monkeypatch, 
     torch.testing.assert_close(hash_op.call_args.kwargs["input_ids"], gathered_input_ids)
     prepare_finalize.all_gather_input_ids.assert_called_once()
     actual_input_ids = prepare_finalize.all_gather_input_ids.call_args.args[0]
-    torch.testing.assert_close(actual_input_ids, input_ids.to(torch.int64))
+    torch.testing.assert_close(actual_input_ids, input_ids)
+    assert actual_input_ids.dtype == input_dtype
 
     with pytest.raises(ValueError, match="hash MoE routing requires input_ids"):
         router._compute_routing(hidden_states, router_logits, torch.int32)
@@ -863,7 +864,8 @@ def test_vision_router_uses_fused_hash_kernel_on_a2_a3(monkeypatch, device_type)
     assert ids.dtype == torch.int64
     assert kwargs["bias"] is text_bias
     assert kwargs["bias_vl"].dtype == router_logits.dtype
-    torch.testing.assert_close(kwargs["input_ids"], input_ids.to(torch.int64))
+    torch.testing.assert_close(kwargs["input_ids"], input_ids)
+    assert kwargs["input_ids"].dtype == torch.int32
     assert kwargs["image_sentinel_lo"] == image_sentinel_lo
     assert kwargs["image_sentinel_count"] == DEEPSEEK_V4_IMAGE_SENTINEL_COUNT
 
@@ -912,8 +914,9 @@ def test_hash_router_chunks_unaligned_input_ids_for_sequence_parallel(monkeypatc
     assert ids is topk_ids
     torch.testing.assert_close(
         hash_op.call_args.kwargs["input_ids"],
-        input_ids[:2].to(torch.int64),
+        input_ids[:2],
     )
+    assert hash_op.call_args.kwargs["input_ids"].dtype == torch.int32
     pad_and_split_input_ids.assert_called_once()
     sequence_parallel_chunk.assert_called_once()
 

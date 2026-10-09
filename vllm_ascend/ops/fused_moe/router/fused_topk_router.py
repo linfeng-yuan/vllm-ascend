@@ -160,7 +160,9 @@ class AscendFusedTopKRouter(AscendGroupedTopKRouter):
             if self.tid2eid is not None or self.bias_vl is not None:
                 if input_ids is None:
                     raise ValueError("DeepSeek V4 vision/hash MoE routing requires input_ids.")
-                input_ids = input_ids.to(torch.int64)
+                # The native hash router accepts both int32 and int64 token
+                # ids.  Preserve the runner dtype here: forcing int64 inside
+                # every MoE layer adds one full-tensor Cast per hash layer.
                 tid2eid_ones = self.tid2eid.to(torch.int32) if self.tid2eid is not None else None
                 if _EXTRA_CTX.moe_comm_type == MoECommType.ALLGATHER:
                     prepare_finalize = _EXTRA_CTX.moe_comm_method.prepare_finalize
