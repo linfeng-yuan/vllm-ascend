@@ -650,10 +650,11 @@ class AscendW8A8MXFP8DSDynamicLinearMethod(AscendW8A8MXFP8DynamicLinearMethod):
             layer.weight_scale.data = layer.weight_scale.data.contiguous()
 
         # wo_a is consumed by npu_transpose_quant_batchmatmul in its explicit
-        # 3D ND layout. Ordinary DS linear weights are consumed by
-        # npu_quant_matmul and can use the weight-NZ path. Do this once after
-        # loading and all semantic transposes instead of converting in forward.
-        if not layer.prefix.endswith("wo_a"):
+        # 3D ND layout. wo_b is consumed by npu_quant_matmul_out, whose A5
+        # aclnnQuantMatmulV5 path requires x2 in ND. Ordinary DS linear weights
+        # can use weight-NZ. Convert once after loading and all semantic
+        # transposes instead of converting in forward.
+        if not layer.prefix.endswith(("wo_a", "wo_b")):
             layer.weight.data = maybe_trans_nz(
                 layer.weight.data.contiguous(),
                 customize_dtype=torch.float8_e4m3fn,
