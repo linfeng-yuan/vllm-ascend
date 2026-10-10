@@ -90,3 +90,32 @@ Release 正文包含 DP0～DP31 的逐 DP vLLM 打屏吞吐、每行对应的 ru
 ```bash
 sha256sum -c SHA256SUMS
 ```
+
+## 问题 profiling：新 cann-bot wheels 后 D 打屏吞吐下降（不计入性能刷新序列，2026-10-10）
+
+[打开问题定位 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-whl060-issue-dp0-running12-20261010)
+
+- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-whl060-issue-dp0-running12-20261010/dsv41-a5-whl060-issue-dp0-running12-ascend-output-20261010.tar.gz)
+- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-whl060-issue-dp0-running12-20261010/SHA256SUMS)
+- SHA256：`db086f9d297a64632b4d4691481c5a8150bb8b18a8a4d0722df4b96b2cb3d6a6`
+
+本条仅用于记录问题，不作为“第五次”性能刷新。压缩包只包含 D0/DP0/卡 0 已解析的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
+
+| 项目 | 配置 / 结果 |
+| --- | --- |
+| 代码 | `linfeng-yuan/vllm-ascend:codex/dsv41-a5-2200tps-r4-1010`，运行时代码截止 `5797a877`；未带后续 NZ 试验 |
+| Wheels | `cannbotdsl 0.6.0+g91e7c8f`，SHA256 `d77d5e7f…2c7cb7`；新版 `cannbot_arena_net_ops 0.1.0`，SHA256 `a7dd63fe…7c016` |
+| 服务 | P：两组 node-local DP8/EP8；D：跨 4 节点 external DP32/EP32/TP1；Proxy workers=4 |
+| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 4.15、force EPLB、recompute scheduler |
+| 图配置 | NPUGraphEx 开启；Static Kernel / Super Kernel 关闭；capture sizes `[72, 96]` |
+| 无 profiling 第二轮 | 384 成功、0 失败，全部输出 4096；TPOT 6.0 ms、P90 6.1 ms；AISBench output throughput 49,381.0098 tokens/s |
+| 无 profiling 的 D 打屏 | 32 个 D 都实测到 running=12；峰值 1970.3～2082.4 tokens/s、均值 2024.5313；同代码旧 wheels 基线均值约 2228.44 |
+| Profiling 本轮性能 | 384 成功、0 失败，全部输出 4096；TPOT 6.6 ms、P90 6.8 ms；AISBench output throughput 45,858.6568 tokens/s |
+| Profiling 轮 D 打屏 | 32 个 D 峰值均对应 running=12；2081.1～2087.4 tokens/s，均值 2085.375 |
+| 采集 | D0/DP0/卡 0；触发时 running=12、waiting=0；profiler 启停请求间隔 2.004 秒 |
+| 解析 | 156,156 条 kernel；83 个 step 标记、82 个相邻 step 间隔；P50 23.963 ms、P90 24.028 ms；5 个 >=30 ms profiling 长尾 |
+| 对比 | 旧 wheels 的第四次 URMA profile step P50 为 22.706 ms；本轮增加 1.257 ms（+5.54%） |
+| 恢复旧 wheels A/B 第一轮 | 384/384 成功；AISBench 52,105.2357 tokens/s；TPOT 5.7 ms、P90 5.9 ms；ITL 平均 23.5 ms、中位 22.4 ms；D running=12 均值 2219.3 tokens/s |
+| 恢复旧 wheels A/B 第二轮 | 384/384 成功；AISBench 51,882.1490 tokens/s；TPOT 5.7 ms、P90 5.8 ms；ITL 平均 23.5 ms、中位 22.5 ms；D running=12 均值 2196.8594 tokens/s |
+
+逐 kernel 对比显示，`EngramUrmaGather` 本轮约 582.99 us/次，未比旧轮约 588.58 us/次变慢。主要差异集中在新版 wheel 启用的 `mixed_quant_sparse_flash_mla`、`QuantLightningIndexer`、`QuantSparseLightningIndexer` 路径；其额外单步开销与约 1.26 ms 的 step P50 增量基本吻合。同机保持代码、脚本和配置不变，六个容器恢复旧 wheels 后连续两轮 D 打屏均值恢复到 2219.3 / 2196.9 tokens/s，强支持性能回退来自新版 wheel 运行路径，而非当前服务配置。
