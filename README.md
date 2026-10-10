@@ -2,6 +2,35 @@
 
 Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
 
+## 最新性能记录：global BS 2560 / 全部 D running=80（无 profiling，2026-10-10）
+
+本条沿用 1536 并发热态配置，将 D 的 `max_num_seqs` 调为 84，并把捕获档位严格限定为 `[480, 504]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `80 × 6 = 480`，容量上限 `84 × 6 = 504`。首轮输出长度 4096 已使全部 32 个 D 达到 running=80，因此没有加长输出或重跑。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
+
+| 项目 | 配置 / 结果 |
+| --- | --- |
+| 代码与 Wheels | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；未叠加 `4d82831`，未重编译自定义算子 SO；`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
+| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
+| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=84`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
+| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；仅捕获 `[480, 504]` 两档；32/32 D 日志均确认图捕获完成 |
+| HCCL 缓冲 | D 的 `HCCL_BUFFSIZE` 从 1600 提到 **2048**；四台 D 的实际进程环境均确认生效。最大 `[504, 129280]` FP32 payload 约 248.5 MiB，当前缓冲留有充足余量 |
+| 负载 | global BS / concurrency 2560；2560 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
+| 数据集 | 复用原 1600 请求基准并追加其前 960 行，未生成新问题；2560 行；SHA256 `9b292de67ccbac8562cef8e9821c30f64d78cb0e3d977ff3832e57d11573caf0`；首条 question SHA256 `056d1107e1e038336d4665db2392a251c0ac7d99d0864525edd6fee19dff7058` |
+| P 预热 | 两轮直连全部 16 个 P API；32/32 请求均为 prompt 129054 / completion 1；第二轮每个 P 的 prefix cache 命中率均为 99.9768% |
+| 请求与 D 指标校验 | **2560 成功、0 失败**；全部输出 4096 tokens；D 成功请求增量 2560；生成 token 增量 10,485,760；每个 D 恰好 80 请求 / 327,680 tokens |
+| 实际 running | **32/32 D 均实测达到 `running=80`**；每个 rank 150 个有效 metrics 样本；无需加长输出 |
+| AISBench 整体吞吐 | **107,632.4923 tokens/s**；这是端到端整体 output throughput，不把 32 个 DP 的独立峰值相加 |
+| AISBench TTFT | 平均 24,237.3 ms；中位 23,155.8 ms；P75 27,522.9 ms；P90 32,531.7 ms；P99 39,556.3 ms |
+| AISBench TPOT | **平均 14.6 ms**；中位 14.4 ms；P75 16.1 ms；P90 **17.4 ms**；P99 17.6 ms |
+| AISBench ITL | 平均 74.7 ms；中位 0.0 ms；P75 123.1 ms；P90 164.1 ms；P99 464.7 ms；0 中位来自该工具在高并发流式批次中的时间点记法，不代表真实零延迟 |
+| D 打屏，指定 running=80 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **6367.1～7272.2 tokens/s**，均值 **6522.1094 tokens/s**，中位 6404.6 tokens/s；全轮单 DP 最大值为 **DP7 7272.2 tokens/s @ running=80, waiting=0** |
+| D 打屏换算 | 按 `80 / throughput × 1000`，各 DP 独立峰值对应约 **11.001～12.565 ms/output-token**，逐 DP 换算均值约 12.288 ms/output-token；该换算不等同于 AISBench TPOT / ITL |
+| External KV | hits / queries = 330,375,680 / 330,378,240，命中率约 99.9992% |
+| 通信与错误检查 | 正式测试偏移后截取的 32 个 D 日志中未出现 `Gloo`、all-reduce fallback、MC2 capacity 回退、HCCL error、`ERROR`、`Traceback`、507018、OOM 或 shape mismatch |
+| 脚本证据 | D 脚本 SHA256 `2c6b6d9de021625823440830c3e8f12eda4a90caed7235f46275e6fb660085b2`；P 脚本 SHA256 `93fabb2e3183e36e065747b2f26b48e0c5f81c9b2c638b9a1b4a19e6a76db646` |
+| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-c2560-1010/run/2p1d/benchmarks/performance-20261010-c2560-compilefix-static-syn51-r1` |
+
+AISBench 有效平均并发为 2203.7712、最大并发为 2560。测试结束后 48/48 后端仍健康，Proxy 仍识别 16 个 P 和 32 个 D。running=80 的逐 DP 打屏峰值来自各自的 10 秒统计窗口，发生时刻可能不同，不能相加当作系统整体峰值。
+
 ## 最新性能记录：global BS 1536 / 全部 D running=48（无 profiling，2026-10-10）
 
 本条是在下方 384 并发热态配置上将 D 的 `max_num_seqs` 调为 50，并把捕获档位严格限定为 `[288, 300]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `48 × 6 = 288`，容量上限 `50 × 6 = 300`。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
