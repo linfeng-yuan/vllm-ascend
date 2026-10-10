@@ -24,12 +24,28 @@ from vllm_ascend.distributed import parallel_state
 from vllm_ascend.ops.vocab_parallel_embedding import (
     AscendLogitsProcessor,
     AscendParallelLMHead,
+    AscendUnquantizedLMHeadMethod,
     AscendVocabParallelEmbedding,
     VocabParallelMode,
     _resolve_vocab_parallel_plan,
 )
 
 VOCAB_PARALLEL_EMBEDDING_TEST_NUM_RANDOM_SEEDS = 128
+
+
+class TestAscendUnquantizedLMHeadMethod(unittest.TestCase):
+    @patch(
+        "vllm_ascend.ops.vocab_parallel_embedding.maybe_trans_nz",
+        side_effect=lambda weight: weight.clone(),
+    )
+    def test_process_weights_converts_lm_head_offline(self, mock_trans_nz):
+        layer = torch.nn.Module()
+        layer.weight = torch.nn.Parameter(torch.randn(32, 16, dtype=torch.bfloat16), requires_grad=False)
+
+        AscendUnquantizedLMHeadMethod().process_weights_after_loading(layer)
+
+        mock_trans_nz.assert_called_once()
+        self.assertEqual(layer.weight.shape, (32, 16))
 
 
 class TestCustomVocabParallelEmbedding(unittest.TestCase):

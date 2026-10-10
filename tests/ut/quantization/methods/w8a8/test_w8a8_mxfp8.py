@@ -205,7 +205,11 @@ class TestAscendW8A8MXFP8LinearMethod(TestBase):
 
 
 class TestAscendW8A8MXFP8DSLinearMethod(TestBase):
-    def test_process_weights_uses_checkpoint_block_size(self):
+    @patch(
+        "vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.maybe_trans_nz",
+        side_effect=lambda weight, **_: weight.clone(),
+    )
+    def test_process_weights_uses_checkpoint_block_size(self, mock_trans_nz):
         for block_size, output_size, input_size in ((32, 64, 64), (128, 256, 256)):
             scheme = object.__new__(AscendW8A8MXFP8DSDynamicLinearMethod)
             scheme.block_size = block_size
@@ -232,6 +236,9 @@ class TestAscendW8A8MXFP8DSLinearMethod(TestBase):
                 layer.weight_scale.shape,
                 (input_size // scheme.group_size // 2, output_size, 2),
             )
+        self.assertEqual(mock_trans_nz.call_count, 2)
+        for call in mock_trans_nz.call_args_list:
+            self.assertEqual(call.kwargs["customize_dtype"], torch.float8_e4m3fn)
 
 
 class TestAscendW8A8MXFP8MoEMethod(TestBase):
@@ -446,7 +453,8 @@ class TestAscendW8A8MXFP8MoEMethod(TestBase):
 
 
 class TestDSMXFP8OProjLayout(TestBase):
-    def test_wo_a_layout_uses_loaded_shard(self):
+    @patch("vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.maybe_trans_nz")
+    def test_wo_a_layout_uses_loaded_shard(self, mock_trans_nz):
         from vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8 import AscendW8A8MXFP8DSDynamicLinearMethod
 
         for local_groups in (1, 2, 8):
@@ -464,3 +472,24 @@ class TestDSMXFP8OProjLayout(TestBase):
             self.assertEqual(layer.weight.shape, (local_groups, 256, 128))
             self.assertEqual(layer.weight_scale.shape, (local_groups, 4, 128, 2))
             torch.testing.assert_close(layer.weight, weight.reshape(local_groups, 128, 256).transpose(1, 2))
+        mock_trans_nz.assert_not_called()
+
+    @patch(
+        "vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.maybe_trans_nz",
+        side_effect=lambda weight, **_: weight.clone(),
+    )
+    def test_wo_b_converts_loaded_weight_to_nz(self, mock_trans_nz):
+        scheme = AscendW8A8MXFP8DSDynamicLinearMethod.__new__(AscendW8A8MXFP8DSDynamicLinearMethod)
+        scheme.block_size = 32
+        scheme.group_size = 32
+        layer = nn.Module()
+        layer.prefix = "model.layers.0.attn.wo_b"
+        layer.weight = nn.Parameter(torch.zeros(64, 64, dtype=torch.float8_e4m3fn), requires_grad=False)
+        layer.weight_scale = nn.Parameter(torch.ones(2, 2, dtype=torch.float32), requires_grad=False)
+
+        scheme.process_weights_after_loading(layer)
+
+        mock_trans_nz.assert_called_once()
+        self.assertEqual(mock_trans_nz.call_args.kwargs["customize_dtype"], torch.float8_e4m3fn)
+        self.assertEqual(layer.weight.shape, (64, 64))
+        self.assertEqual(layer.weight_scale.shape, (1, 64, 2))

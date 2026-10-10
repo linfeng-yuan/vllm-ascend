@@ -51,6 +51,7 @@ from vllm_ascend.utils import (
     enable_pcp_embedding_lmhead_weight_sharding,
     get_potential_max_tokens,
     lmhead_tp_enable,
+    maybe_trans_nz,
 )
 
 
@@ -435,6 +436,14 @@ class AscendVocabParallelEmbedding(VocabParallelEmbedding):
         return torch.ops.vllm.all_reduce(output_parallel, reduce_group.unique_name)
 
 
+class AscendUnquantizedLMHeadMethod(UnquantizedEmbeddingMethod):
+    """Store floating-point LM-head weights in the configured offline layout."""
+
+    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        super().process_weights_after_loading(layer)
+        layer.weight.data = maybe_trans_nz(layer.weight.data)
+
+
 class AscendParallelLMHead(ParallelLMHead):
     """
     Register ParallelLMHead as a custom op for Ascend."""
@@ -463,6 +472,8 @@ class AscendParallelLMHead(ParallelLMHead):
             prefix,
             disable_tp=disable_tp,
         )
+        if type(self.quant_method) is UnquantizedEmbeddingMethod:
+            self.quant_method = AscendUnquantizedLMHeadMethod()
         self.quant_config = quant_config
         if bias:
             self.bias = Parameter(torch.empty(self.num_embeddings_per_partition, dtype=params_dtype))

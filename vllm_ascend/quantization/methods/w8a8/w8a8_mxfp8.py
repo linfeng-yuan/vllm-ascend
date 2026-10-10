@@ -648,3 +648,13 @@ class AscendW8A8MXFP8DSDynamicLinearMethod(AscendW8A8MXFP8DynamicLinearMethod):
             # dimension, which requires contiguous HCCL inputs.
             layer.weight.data = layer.weight.data.contiguous()
             layer.weight_scale.data = layer.weight_scale.data.contiguous()
+
+        # wo_a is consumed by npu_transpose_quant_batchmatmul in its explicit
+        # 3D ND layout. Ordinary DS linear weights are consumed by
+        # npu_quant_matmul and can use the weight-NZ path. Do this once after
+        # loading and all semantic transposes instead of converting in forward.
+        if not layer.prefix.endswith("wo_a"):
+            layer.weight.data = maybe_trans_nz(
+                layer.weight.data.contiguous(),
+                customize_dtype=torch.float8_e4m3fn,
+            )
