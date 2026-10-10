@@ -2,6 +2,35 @@
 
 Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
 
+## 最新性能记录：compile 装饰器修复 + Static Kernel + synthetic 5.1（无 profiling，2026-10-10）
+
+本条只记录无 profiling 性能，不包含 profiling 压缩包，也不作为新的 profiling 轮次。以下以第二轮热态结果为主；测试使用 synthetic acceptance，只用于性能比较，不代表真实接受率或准确率。
+
+| 项目 | 配置 / 结果 |
+| --- | --- |
+| 代码 | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；运行时集成记录 `017852a94e0a1db8c8449fd91fb1d60e77f7a163`；未叠加 `4d82831`，未重编译自定义算子 SO |
+| Wheels | 恢复旧版本：`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
+| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
+| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
+| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；capture sizes `[72, 96]` |
+| 负载 | 384 并发、384 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
+| P 预热 | 两轮直连全部 16 个 P API；第二轮各 P 的 prefix cache 命中率均为 99.9768% |
+| 第二轮请求校验 | 384 成功、0 失败；全部输出 4096 tokens；D 成功请求增量 384；生成 token 增量 1,572,864；32/32 D 均实测达到 running=12 |
+| AISBench 整体吞吐 | **62,236.4926 tokens/s**；这里是端到端整体 output throughput，不与各 DP 的独立峰值相加 |
+| AISBench TTFT | 平均 3130.4 ms；中位 3120.6 ms；P90 4278.7 ms；P99 4807.5 ms |
+| AISBench TPOT | **平均 4.5 ms**；中位 4.5 ms；P90 **4.7 ms**；P99 4.7 ms |
+| AISBench ITL | **平均 22.9 ms**；中位 21.5 ms；P90 **28.2 ms**；P99 77.6 ms |
+| D 打屏，指定 running=12 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **1820.4～1931.9 tokens/s**，均值 **1868.2188 tokens/s**；例如 DP6 为 **1931.9 tokens/s @ running=12, waiting=0** |
+| D 打屏，本轮任意 active 窗口 | 各 DP 独立峰值范围 **2759.1～2818.4 tokens/s**，均值 **2788.6813 tokens/s**；全轮单 DP 最大值为 **DP30 2818.4 tokens/s @ running=9, waiting=0** |
+| External KV | hits / queries = 49,556,352 / 49,556,736，命中率约 99.9992% |
+| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-1010/run/2p1d/benchmarks/performance-20261010-c384-compilefix-static-syn51-r2-1806` |
+
+AISBench TPOT / ITL 来自 `gsm8k.csv` 原始统计，不是由 vLLM 打屏吞吐反算。D 打屏值为服务端 10 秒统计窗口；每个 DP 的峰值发生时刻可能不同，因此不能把 32 个独立峰值相加作为整体峰值。
+
+第一轮冷态结果为 AISBench output throughput 42,903.7745 tokens/s、TPOT 平均 4.5 ms / P90 4.8 ms、ITL 平均 23.2 ms / 中位 21.4 ms / P90 28.0 ms；由于 TTFT 平均 15,103.2 ms 且各 DP 进入 running=12 的时间不齐，本记录以第二轮热态结果为主。
+
+与同机旧 wheels A/B 第二轮（51,882.1490 tokens/s、TPOT 5.7 ms、ITL 平均 23.5 ms）相比，本轮整体 output throughput 高约 19.96%，TPOT 平均低约 21.05%，ITL 平均低约 2.55%。但本轮同时改变了 Static Kernel、synthetic acceptance length 和 compile 装饰器，不能把差异归因于单一开关。
+
 ## 最新：主线四个 PR + AICPU URMA Engram，D0/DP0 running=12（第四次，2026-10-10）
 
 [打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-prs4-urma-dp0-running12-20261010)
