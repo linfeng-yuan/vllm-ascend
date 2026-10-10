@@ -2,6 +2,32 @@
 
 Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
 
+## 最新性能记录：global BS 1536 / 全部 D running=48（无 profiling，2026-10-10）
+
+本条是在下方 384 并发热态配置上将 D 的 `max_num_seqs` 调为 50，并把捕获档位严格限定为 `[288, 300]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `48 × 6 = 288`，容量上限 `50 × 6 = 300`。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
+
+| 项目 | 配置 / 结果 |
+| --- | --- |
+| 代码与 Wheels | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；未叠加 `4d82831`，未重编译自定义算子 SO；`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
+| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
+| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=50`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
+| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；仅捕获 `[288, 300]` 两档；32/32 D 日志均确认图捕获完成 |
+| 负载 | global BS / concurrency 1536；1536 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
+| P 预热 | 两轮直连全部 16 个 P API；第二轮每个 P 的 prefix cache 命中率均为 99.9768% |
+| 请求与 D 指标校验 | 1536 成功、0 失败；全部输出 4096 tokens；D 成功请求增量 1536；生成 token 增量 6,291,456；每个 D 恰好 48 请求 / 196,608 tokens |
+| 实际 running | 32/32 D 均实测达到 `running=48`；每个 rank 126 个有效 metrics 样本；无需加长输出 |
+| AISBench 整体吞吐 | **79,981.8881 tokens/s**；这是端到端整体 output throughput，不把 32 个 DP 的独立峰值相加 |
+| AISBench TTFT | 平均 23,482.3 ms；中位 22,155.0 ms；P90 32,264.9 ms；P99 38,348.0 ms |
+| AISBench TPOT | **平均 11.6 ms**；中位 11.8 ms；P90 **13.6 ms**；P99 13.9 ms |
+| AISBench ITL | **平均 59.2 ms**；中位 48.0 ms；P90 **81.4 ms**；P99 879.3 ms |
+| D 打屏，指定 running=48 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **5579.1～5585.5 tokens/s**，均值 **5582.3125 tokens/s**；全轮单 DP 最大值为 **DP6 5585.5 tokens/s @ running=48, waiting=0** |
+| D 打屏换算 | 按 `48 / throughput × 1000`，服务端稳态窗口对应约 **8.594～8.604 ms/output-token**，均值约 **8.599 ms/output-token**；该换算不等同于 AISBench 的逐流式 ITL 统计 |
+| External KV | hits / queries = 198,225,408 / 198,226,944，命中率约 99.9992% |
+| 通信与错误检查 | 正式测试偏移后截取的 32 个 D 日志中未出现 `Gloo`、all-reduce fallback、MC2 capacity 回退、`ERROR`、`Traceback`、507018 或 shape mismatch |
+| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-c1536-1010/run/2p1d/benchmarks/performance-20261010-c1536-compilefix-static-syn51-r1` |
+
+AISBench 有效平均并发为 1382.825、最大并发为 1536；服务端稳态打屏峰值发生在所有 DP 都已进入 running=48 后。测试结束后 48/48 后端仍健康，Proxy 仍识别 16 个 P 和 32 个 D。
+
 ## 最新性能记录：compile 装饰器修复 + Static Kernel + synthetic 5.1（无 profiling，2026-10-10）
 
 本条只记录无 profiling 性能，不包含 profiling 压缩包，也不作为新的 profiling 轮次。以下以第二轮热态结果为主；测试使用 synthetic acceptance，只用于性能比较，不代表真实接受率或准确率。
