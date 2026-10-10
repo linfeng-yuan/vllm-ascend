@@ -205,11 +205,12 @@ class TestAscendW8A8MXFP8LinearMethod(TestBase):
 
 
 class TestAscendW8A8MXFP8DSLinearMethod(TestBase):
+    @patch("vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.torch_npu.get_npu_format", return_value=29)
     @patch(
         "vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.maybe_trans_nz",
         side_effect=lambda weight, **_: weight.clone(),
     )
-    def test_process_weights_uses_checkpoint_block_size(self, mock_trans_nz):
+    def test_process_weights_uses_checkpoint_block_size(self, mock_trans_nz, _mock_get_npu_format):
         for block_size, output_size, input_size in ((32, 64, 64), (128, 256, 256)):
             scheme = object.__new__(AscendW8A8MXFP8DSDynamicLinearMethod)
             scheme.block_size = block_size
@@ -236,6 +237,7 @@ class TestAscendW8A8MXFP8DSLinearMethod(TestBase):
                 layer.weight_scale.shape,
                 (input_size // scheme.group_size // 2, output_size, 2),
             )
+            self.assertTrue(layer.weight_scale.is_contiguous())
         self.assertEqual(mock_trans_nz.call_count, 2)
         for call in mock_trans_nz.call_args_list:
             self.assertEqual(call.kwargs["customize_dtype"], torch.float8_e4m3fn)
@@ -474,11 +476,12 @@ class TestDSMXFP8OProjLayout(TestBase):
             torch.testing.assert_close(layer.weight, weight.reshape(local_groups, 128, 256).transpose(1, 2))
         mock_trans_nz.assert_not_called()
 
+    @patch("vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.torch_npu.get_npu_format", return_value=29)
     @patch(
         "vllm_ascend.quantization.methods.w8a8.w8a8_mxfp8.maybe_trans_nz",
         side_effect=lambda weight, **_: weight.clone(),
     )
-    def test_wo_b_converts_loaded_weight_to_nz(self, mock_trans_nz):
+    def test_wo_b_converts_loaded_weight_to_nz(self, mock_trans_nz, _mock_get_npu_format):
         scheme = AscendW8A8MXFP8DSDynamicLinearMethod.__new__(AscendW8A8MXFP8DSDynamicLinearMethod)
         scheme.block_size = 32
         scheme.group_size = 32

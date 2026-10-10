@@ -658,3 +658,8 @@ class AscendW8A8MXFP8DSDynamicLinearMethod(AscendW8A8MXFP8DynamicLinearMethod):
                 layer.weight.data.contiguous(),
                 customize_dtype=torch.float8_e4m3fn,
             )
+            if int(torch_npu.get_npu_format(layer.weight)) == 29:
+                # QuantMatmul's NZ path requires the transposed scale tensor
+                # to be materialized in its matching contiguous layout. The
+                # ND path accepts the non-contiguous transpose view.
+                layer.weight_scale.data = layer.weight_scale.data.contiguous()
