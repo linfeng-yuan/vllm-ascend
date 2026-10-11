@@ -383,17 +383,12 @@ curl -f http://197.33.45.1:8300/healthcheck
 
 ## 6. 实验结果
 
-以下为 global BS 2560 的干净 profiling 轮次。正式请求前 Proxy `request_num=0`；2560/2560 请求成功，每条实际输入 129054 tokens、输出 5096 tokens；32 个 D 均精确达到 `running=80`。
+三档使用相同代码和服务拓扑。表中的吞吐是 32 个 D DP 各自在指定 `running` 下的单卡打屏结果，不是 32 卡求和。
 
-| 项目 | 结果 |
-| --- | --- |
-| P / D 配置 | P `max_num_seqs=16`；D `max_num_seqs=84`，capture `[480,504]` |
-| AISBench output throughput | **99,659.3107 tokens/s** |
-| AISBench TPOT | 平均 **13.2 ms**，P90 **13.6 ms** |
-| D 打屏峰值 | **6172.9 tokens/s @ running=80, waiting=0** |
-| 卡0 profiling | 61,874 kernels；step interval P50 **64.081 ms** |
+| global BS | D 配置 | 实测状态 | 稳态单 D 卡吞吐 | 卡0 profiling |
+| --- | --- | --- | --- | --- |
+| 384 | `max_num_seqs=16`，capture `[72,96]` | 32/32 DP 达到 `running=12` | 各 DP 峰值 **2852.3–2859.1 tokens/s** | 148,943 kernels；step P50 **21.672 ms**；[Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010) / [下载](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-ascend-output-20261010.tar.gz) |
+| 1536 | `max_num_seqs=50`，capture `[288,300]` | 32/32 DP 达到 `running=48` | 各 DP 峰值 **5561.4–5588.6 tokens/s** | 86,202 kernels；step P50 **44.036 ms**；[Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010) / [下载](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-ascend-output-20261010.tar.gz) |
+| 2560 | `max_num_seqs=84`，capture `[480,504]`，`HCCL_BUFFSIZE=2048` | 32/32 DP 达到 `running=80` | 最高 **6172.9 tokens/s** | 61,874 kernels；step P50 **64.081 ms**；[Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011) / [下载](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz) |
 
-- [Profiling Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011)
-- [下载卡0 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz)
-
-该轮使用 synthetic acceptance length 5.1，仅用于性能比较，不代表真实接受率或准确率。
+三档均为 synthetic acceptance length 5.1，仅用于性能比较，不代表真实接受率或准确率。Profiling 压缩包只包含 D0/DP0/卡0 解析后的 `ASCEND_PROFILER_OUTPUT/`。
