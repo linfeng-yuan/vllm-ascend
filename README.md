@@ -1,217 +1,399 @@
-# DSV4.1 A5 Profiling
+# DeepSeek-V4.1 Flash on Ascend 950DT：2P4D 部署
 
-Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
+本文记录当前 2P4D 环境的最小启动配置。脚本结构参考
+[vLLM Ascend v0.23.0 DeepSeek-V4-Pro / Ascend 950DT PD 分离示例](https://github.com/vllm-project/vllm-ascend/blob/v0.23.0/docs/source/tutorials/models/DeepSeek-V4-Pro.md#523-ascend-950dt-series-pd-separation-deployment)，
+参数按本次 DeepSeek-V4.1 Flash 实验调整。
 
-## compilefix + Static Kernel + synthetic 5.1：三档 profiling（2026-10-10～11）
+## 环境
 
-三档均使用同一套代码和服务拓扑：运行代码 `5797a877`，只叠加 compile 装饰器修复 `4058b6f`；P 为两组 node-local DP8/EP8，D 为跨四节点 external DP32/EP32/TP1，Proxy workers=4；LMHead TP8、DSpark 5、force EPLB、recompute scheduler、AICPU URMA Engram、NPUGraphEx 与 Static Kernel 开启、Super Kernel 关闭，synthetic acceptance length 5.1。synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。每个压缩包都只包含 D0/DP0/卡0 离线解析后的 `ASCEND_PROFILER_OUTPUT/`。
-
-| global BS | D 配置与实测 running | AISBench / D 打屏 | 卡0解析摘要 | 下载 |
-| --- | --- | --- | --- | --- |
-| 384 | `max_num_seqs=16`，capture `[72,96]`；32/32 D 达到 running=12 | 整体 output throughput **54,974.1283 tok/s**；TPOT avg/P90 **4.9/5.2 ms**；running=12 单 DP 打屏峰值范围 **2852.3～2859.1 tok/s** | 148,943 kernels；79 markers；step interval P50 **21.672 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-ascend-output-20261010.tar.gz) |
-| 1536 | `max_num_seqs=50`，capture `[288,300]`；32/32 D 达到 running=48 | 整体 output throughput **99,182.2707 tok/s**；TPOT avg/P90 **9.5/10.0 ms**；running=48 单 DP 打屏峰值范围 **5561.4～5588.6 tok/s** | 86,202 kernels；46 markers；step interval P50 **44.036 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-ascend-output-20261010.tar.gz) |
-| 2560 | `max_num_seqs=84`，capture `[480,504]`，`HCCL_BUFFSIZE=2048`；32/32 D 精确达到 running=80 | 整体 output throughput **99,659.3107 tok/s**；TPOT avg/P90 **13.2/13.6 ms**；严格 running=80 单 DP 打屏峰值 **6172.9 tok/s** | 61,874 kernels；33 markers；step interval P50 **64.081 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz) |
-
-2560 profiling 是清场并以新 TAG 拉起后的干净轮次：正式请求前 Proxy `request_num=0`；2560/2560 成功、0 失败，每条实际输入 129054、输出 5096 tokens；D 成功计数和生成 token 增量严格匹配，每个 D 恰好处理 80 个请求。输出比原性能基准延长 1000 tokens，只用于保证稳定 running=80 采集窗口。32 个 rank 的 metrics 都达到 running=80；受 vLLM 打屏周期影响，其中 29 个留下了恰好 running=80 的日志行，另外 3 个只有相邻 active 窗口，因此不伪造缺失的逐 rank 打屏值。
-
-## 最新性能记录：global BS 2560 / 全部 D running=80（无 profiling，2026-10-10）
-
-本条沿用 1536 并发热态配置，将 D 的 `max_num_seqs` 调为 84，并把捕获档位严格限定为 `[480, 504]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `80 × 6 = 480`，容量上限 `84 × 6 = 504`。首轮输出长度 4096 已使全部 32 个 D 达到 running=80，因此没有加长输出或重跑。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
-
-| 项目 | 配置 / 结果 |
+| 项目 | 配置 |
 | --- | --- |
-| 代码与 Wheels | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；未叠加 `4d82831`，未重编译自定义算子 SO；`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
-| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=84`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
-| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；仅捕获 `[480, 504]` 两档；32/32 D 日志均确认图捕获完成 |
-| HCCL 缓冲 | D 的 `HCCL_BUFFSIZE` 从 1600 提到 **2048**；四台 D 的实际进程环境均确认生效。最大 `[504, 129280]` FP32 payload 约 248.5 MiB，当前缓冲留有充足余量 |
-| 负载 | global BS / concurrency 2560；2560 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
-| 数据集 | 复用原 1600 请求基准并追加其前 960 行，未生成新问题；2560 行；SHA256 `9b292de67ccbac8562cef8e9821c30f64d78cb0e3d977ff3832e57d11573caf0`；首条 question SHA256 `056d1107e1e038336d4665db2392a251c0ac7d99d0864525edd6fee19dff7058` |
-| P 预热 | 两轮直连全部 16 个 P API；32/32 请求均为 prompt 129054 / completion 1；第二轮每个 P 的 prefix cache 命中率均为 99.9768% |
-| 请求与 D 指标校验 | **2560 成功、0 失败**；全部输出 4096 tokens；D 成功请求增量 2560；生成 token 增量 10,485,760；每个 D 恰好 80 请求 / 327,680 tokens |
-| 实际 running | **32/32 D 均实测达到 `running=80`**；每个 rank 150 个有效 metrics 样本；无需加长输出 |
-| AISBench 整体吞吐 | **107,632.4923 tokens/s**；这是端到端整体 output throughput，不把 32 个 DP 的独立峰值相加 |
-| AISBench TTFT | 平均 24,237.3 ms；中位 23,155.8 ms；P75 27,522.9 ms；P90 32,531.7 ms；P99 39,556.3 ms |
-| AISBench TPOT | **平均 14.6 ms**；中位 14.4 ms；P75 16.1 ms；P90 **17.4 ms**；P99 17.6 ms |
-| AISBench ITL | 平均 74.7 ms；中位 0.0 ms；P75 123.1 ms；P90 164.1 ms；P99 464.7 ms；0 中位来自该工具在高并发流式批次中的时间点记法，不代表真实零延迟 |
-| D 打屏，稳定 running=80 | 去除进入/退出稳态的过渡窗口后，96 个 `prompt=0, running=80` 打屏值范围 **6359.8～6406.3 tokens/s**，均值 **6376.0667 tokens/s**；各 DP 稳态中位数范围 6362.4～6368.4 tokens/s。此前记录的 7272.2 是过渡统计窗口，不作为稳定 running=80 峰值 |
-| D 打屏换算 | 按 `80 / throughput × 1000`，稳定窗口对应约 **12.488～12.579 ms/output-token**，按均值换算约 **12.547 ms/output-token**；该换算不等同于 AISBench TPOT / ITL |
-| External KV | hits / queries = 330,375,680 / 330,378,240，命中率约 99.9992% |
-| 通信与错误检查 | 正式测试偏移后截取的 32 个 D 日志中未出现 `Gloo`、all-reduce fallback、MC2 capacity 回退、HCCL error、`ERROR`、`Traceback`、507018、OOM 或 shape mismatch |
-| 脚本证据 | D 脚本 SHA256 `2c6b6d9de021625823440830c3e8f12eda4a90caed7235f46275e6fb660085b2`；P 脚本 SHA256 `93fabb2e3183e36e065747b2f26b48e0c5f81c9b2c638b9a1b4a19e6a76db646` |
-| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-c2560-1010/run/2p1d/benchmarks/performance-20261010-c2560-compilefix-static-syn51-r1` |
+| 服务器 | 6 台，每台 8×Ascend 950DT 96 GiB |
+| 系统 | openEuler 24.03，aarch64 |
+| CANN | 9.2.0 |
+| PyTorch / torch-npu | 2.10.0 / 2.10.0.post7 |
+| vLLM | 0.30.0+empty |
+| vLLM Ascend | 0.19.1rc2.dev2628+final4e9818638 |
+| 镜像 | `vllm-ascend:dsv41-a5-pr17927-4cbe4962c-freshso-20261008` |
+| 模型 | `/home/weights/deepseek-ai--DeepSeek-V4.1-Flash` |
+| served model | `deepseek-v41-a5-v0300-2p1d` |
+| 实验代码 | 基线 `5797a877`，叠加 compile 修复 `4058b6f` |
 
-AISBench 有效平均并发为 2203.7712、最大并发为 2560。测试结束后 48/48 后端仍健康，Proxy 仍识别 16 个 P 和 32 个 D。running=80 的逐 DP 打屏峰值来自各自的 10 秒统计窗口，发生时刻可能不同，不能相加当作系统整体峰值。
+数据网卡均为 `enp39s0f0`。
 
-## 最新性能记录：global BS 1536 / 全部 D running=48（无 profiling，2026-10-10）
+| 节点 | 数据 IP | 容器 | 并行配置 |
+| --- | --- | --- | --- |
+| P0 | 197.33.45.1 | `dsv41-p0` | node-local DP8/EP8/TP1 |
+| P1 | 197.33.46.1 | `dsv41-p1` | node-local DP8/EP8/TP1 |
+| D0 | 197.33.47.1 | `dsv41-d0` | global DP 0–7 |
+| D1 | 197.33.48.1 | `dsv41-d1` | global DP 8–15 |
+| D2 | 197.33.49.1 | `dsv41-d2` | global DP 16–23 |
+| D3 | 197.33.50.1 | `dsv41-d3` | global DP 24–31 |
 
-本条是在下方 384 并发热态配置上将 D 的 `max_num_seqs` 调为 50，并把捕获档位严格限定为 `[288, 300]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `48 × 6 = 288`，容量上限 `50 × 6 = 300`。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
+P0 和 P1 是两个独立的 DP8 组，共 16 个 P API。D0–D3 组成一个 external DP32/EP32/TP1 组，共 32 个 D API。D 侧 LMHead TP 为 8。KV 传输使用 `MooncakeHybridConnector`，Proxy 使用 4 workers。
 
-| 项目 | 配置 / 结果 |
-| --- | --- |
-| 代码与 Wheels | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；未叠加 `4d82831`，未重编译自定义算子 SO；`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
-| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=50`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
-| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；仅捕获 `[288, 300]` 两档；32/32 D 日志均确认图捕获完成 |
-| 负载 | global BS / concurrency 1536；1536 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
-| P 预热 | 两轮直连全部 16 个 P API；第二轮每个 P 的 prefix cache 命中率均为 99.9768% |
-| 请求与 D 指标校验 | 1536 成功、0 失败；全部输出 4096 tokens；D 成功请求增量 1536；生成 token 增量 6,291,456；每个 D 恰好 48 请求 / 196,608 tokens |
-| 实际 running | 32/32 D 均实测达到 `running=48`；每个 rank 126 个有效 metrics 样本；无需加长输出 |
-| AISBench 整体吞吐 | **79,981.8881 tokens/s**；这是端到端整体 output throughput，不把 32 个 DP 的独立峰值相加 |
-| AISBench TTFT | 平均 23,482.3 ms；中位 22,155.0 ms；P90 32,264.9 ms；P99 38,348.0 ms |
-| AISBench TPOT | **平均 11.6 ms**；中位 11.8 ms；P90 **13.6 ms**；P99 13.9 ms |
-| AISBench ITL | **平均 59.2 ms**；中位 48.0 ms；P90 **81.4 ms**；P99 879.3 ms |
-| D 打屏，指定 running=48 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **5579.1～5585.5 tokens/s**，均值 **5582.3125 tokens/s**；全轮单 DP 最大值为 **DP6 5585.5 tokens/s @ running=48, waiting=0** |
-| D 打屏换算 | 按 `48 / throughput × 1000`，服务端稳态窗口对应约 **8.594～8.604 ms/output-token**，均值约 **8.599 ms/output-token**；该换算不等同于 AISBench 的逐流式 ITL 统计 |
-| External KV | hits / queries = 198,225,408 / 198,226,944，命中率约 99.9992% |
-| 通信与错误检查 | 正式测试偏移后截取的 32 个 D 日志中未出现 `Gloo`、all-reduce fallback、MC2 capacity 回退、`ERROR`、`Traceback`、507018 或 shape mismatch |
-| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-c1536-1010/run/2p1d/benchmarks/performance-20261010-c1536-compilefix-static-syn51-r1` |
+## 1. 启动容器
 
-AISBench 有效平均并发为 1382.825、最大并发为 1536；服务端稳态打屏峰值发生在所有 DP 都已进入 running=48 后。测试结束后 48/48 后端仍健康，Proxy 仍识别 16 个 P 和 32 个 D。
+六台机器使用同一个镜像。先准备：
 
-## 最新性能记录：compile 装饰器修复 + Static Kernel + synthetic 5.1（无 profiling，2026-10-10）
+- `/etc/hccl_rootinfo.json`
+- `/etc/hixlep/`
+- 模型目录
+- 本文下面的四个脚本
+- v0.23.0 的
+  [`load_balance_proxy_server_example.py`](https://github.com/vllm-project/vllm-ascend/blob/v0.23.0/examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py)
 
-本条只记录无 profiling 性能，不包含 profiling 压缩包，也不作为新的 profiling 轮次。以下以第二轮热态结果为主；测试使用 synthetic acceptance，只用于性能比较，不代表真实接受率或准确率。
-
-| 项目 | 配置 / 结果 |
-| --- | --- |
-| 代码 | 2200 TPS 基线运行代码 `5797a877`，仅叠加 compile 装饰器修复 `4058b6f`；运行时集成记录 `017852a94e0a1db8c8449fd91fb1d60e77f7a163`；未叠加 `4d82831`，未重编译自定义算子 SO |
-| Wheels | 恢复旧版本：`cannbotdsl 0.4.dev28`、`cannbot_arena_net_ops 0.1.0` |
-| 服务 | P：两组 node-local DP8/EP8；D：跨四节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 5.1、force EPLB、recompute scheduler、AICPU URMA Engram |
-| 图配置 | NPUGraphEx 开启；Static Kernel 开启；Super Kernel 关闭；capture sizes `[72, 96]` |
-| 负载 | 384 并发、384 请求；输入 129054 tokens；输出 4096 tokens；prefix repeat rate 100% |
-| P 预热 | 两轮直连全部 16 个 P API；第二轮各 P 的 prefix cache 命中率均为 99.9768% |
-| 第二轮请求校验 | 384 成功、0 失败；全部输出 4096 tokens；D 成功请求增量 384；生成 token 增量 1,572,864；32/32 D 均实测达到 running=12 |
-| AISBench 整体吞吐 | **62,236.4926 tokens/s**；这里是端到端整体 output throughput，不与各 DP 的独立峰值相加 |
-| AISBench TTFT | 平均 3130.4 ms；中位 3120.6 ms；P90 4278.7 ms；P99 4807.5 ms |
-| AISBench TPOT | **平均 4.5 ms**；中位 4.5 ms；P90 **4.7 ms**；P99 4.7 ms |
-| AISBench ITL | **平均 22.9 ms**；中位 21.5 ms；P90 **28.2 ms**；P99 77.6 ms |
-| D 打屏，指定 running=12 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **1820.4～1931.9 tokens/s**，均值 **1868.2188 tokens/s**；例如 DP6 为 **1931.9 tokens/s @ running=12, waiting=0** |
-| D 打屏，本轮任意 active 窗口 | 各 DP 独立峰值范围 **2759.1～2818.4 tokens/s**，均值 **2788.6813 tokens/s**；全轮单 DP 最大值为 **DP30 2818.4 tokens/s @ running=9, waiting=0** |
-| External KV | hits / queries = 49,556,352 / 49,556,736，命中率约 99.9992% |
-| 结果目录 | `/mnt/shared/l00517252/ylf/dsv41-a5-compilefix-static-syn51-1010/run/2p1d/benchmarks/performance-20261010-c384-compilefix-static-syn51-r2-1806` |
-
-AISBench TPOT / ITL 来自 `gsm8k.csv` 原始统计，不是由 vLLM 打屏吞吐反算。D 打屏值为服务端 10 秒统计窗口；每个 DP 的峰值发生时刻可能不同，因此不能把 32 个独立峰值相加作为整体峰值。
-
-第一轮冷态结果为 AISBench output throughput 42,903.7745 tokens/s、TPOT 平均 4.5 ms / P90 4.8 ms、ITL 平均 23.2 ms / 中位 21.4 ms / P90 28.0 ms；由于 TTFT 平均 15,103.2 ms 且各 DP 进入 running=12 的时间不齐，本记录以第二轮热态结果为主。
-
-与同机旧 wheels A/B 第二轮（51,882.1490 tokens/s、TPOT 5.7 ms、ITL 平均 23.5 ms）相比，本轮整体 output throughput 高约 19.96%，TPOT 平均低约 21.05%，ITL 平均低约 2.55%。但本轮同时改变了 Static Kernel、synthetic acceptance length 和 compile 装饰器，不能把差异归因于单一开关。
-
-## 最新：主线四个 PR + AICPU URMA Engram，D0/DP0 running=12（第四次，2026-10-10）
-
-[打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-prs4-urma-dp0-running12-20261010)
-
-- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-urma-dp0-running12-20261010/dsv41-a5-main-prs4-urma-dp0-running12-ascend-output-20261010.tar.gz)
-- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-urma-dp0-running12-20261010/SHA256SUMS)
-- SHA256：`f975fb2e185ed1b50b48ee4b816424c44c83a19b9bb75acddaece6fbac0205e1`
-
-本压缩包只包含 D0/DP0/卡 0 已解析的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
-
-| 项目 | 配置 / 结果 |
-| --- | --- |
-| Engram | P、D 均显式启用 `engram_lookup_backend=aicpu_urma_cube_hbm`；Profile 中出现 `EngramUrmaGather` |
-| 无 profiling 性能 | 384/384 成功，全部输出 4096；TPOT 5.7 ms；AISBench output throughput 48,551.8969 tokens/s |
-| 无 profiling 的 vLLM 打屏 | 32 个 D 都实测到 running=12；30 个稳定 running=12 DP 的峰值 2219.0～2225.2 tokens/s、均值 2221.73，对应 ITL 5.393～5.408 ms/token；DP0/1 的窗口峰值分别为 2213.6@running11、2216.0@running11 |
-| Profiling 本轮性能 | 384/384 成功，全部输出 4096；TPOT 6.2 ms；AISBench output throughput 49,215.1912 tokens/s |
-| Profiling 轮 vLLM 打屏 | 32 个 D 的峰值均对应 running=12、waiting=0；2210.7～2216.4 tokens/s，均值 2212.3125；换算 ITL 5.414～5.428 ms/token，均值 5.424 ms/token |
-| 采集 | D0/DP0/卡 0；触发时 running=12、waiting=0；profiler 启停请求间隔 2.000 秒 |
-| 解析 | 161,639 条 kernel；84 个 step 标记；step P50 22.706 ms、P90 24.798 ms；P50 / synthetic 4.15 ≈ 5.471 ms/token |
-| 对比 | AISBench 整体 output throughput 比 UVA 低 1.96%；`EngramUrmaGather` 约 588.584 us/次，是 UVA gather 约 200.946 us/次的 2.93 倍，本负载下 URMA 不是更优开关 |
-
-Release 正文包含 DP0～DP31 的逐 DP vLLM 打屏吞吐、每行对应的 running，以及 ITL/step interval 的换算关系。
-
-## 历史：主线四个 PR + UVA Engram，D0/DP0 running=12（第三次，2026-10-09）
-
-[打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-prs4-uva-dp0-running12-20261009)
-
-- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-uva-dp0-running12-20261009/dsv41-a5-main-prs4-uva-dp0-running12-ascend-output-20261009.tar.gz)
-- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-prs4-uva-dp0-running12-20261009/SHA256SUMS)
-- SHA256：`37a5dc256c628be191bcae48158d35cb0c7a8828856d1976922dc3f118bae2fb`
-
-本压缩包只包含 D0/DP0/卡 0 已解析的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
-
-| 项目 | 配置 / 结果 |
-| --- | --- |
-| 代码 | `linfeng-yuan/vllm-ascend:codex/dsv41-a5-main-prs-1009`，`3352c26c`；叠加 #18101、#18102、#18113、#18131 及既有 Gate/Router/LMHead TP 修改 |
-| Engram | 本轮仍为默认 `engram_lookup_backend=uva`；代码虽包含 #18101，但本轮没有启用其 `aicpu_urma_cube_hbm` 后端 |
-| 服务 | P：两组 node-local DP8/EP8；D：跨 4 节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 4.15、force EPLB、recompute scheduler |
-| 图配置 | NPUGraphEx 开启；Static Kernel / Super Kernel 关闭；capture sizes `[72, 96]` |
-| 负载 | 384 并发、384 请求、输入 129054 tokens、输出 4096 tokens |
-| 无 profiling 性能 | 384 成功、0 失败；TPOT 5.7 ms；AISBench output throughput 49,520.4541 tokens/s；32 个 D 在 running=12、waiting=0 时的打屏峰值 2215.4～2222.6 tokens/s，均值 2217.87；换算 ITL 5.399～5.417 ms/token（各 DP 峰值不求和） |
-| Profiling 本轮性能 | 384 成功、0 失败，全部输出 4096 tokens；TPOT 6.2 ms；AISBench output throughput 49,476.0217 tokens/s |
-| 采集目标 | D0 / DP0 / 卡 0，触发时 running=12、waiting=0；profiler 启停请求间隔 2.000 秒 |
-| 解析结果 | 158,058 条 kernel 记录；83 个 `_expand_idx_mapping_kernel` 标记、82 个相邻 step 间隔 |
-| Step 间隔 | P50 22.690 ms，P90 26.594 ms；6 个 >=30 ms 的 profiling 扰动长尾 |
-| Cast 观察 | 仍有 249 次 `[72,5120]` BF16→FP32 cast（合计约 884.414 us），所以不能表述为 #18102 已消除全部模型路径 FP32 cast |
-
-解析结果包含 `trace_view.json`、`kernel_details.csv`、`operator_details.csv`、`task_time.csv`、`analysis.db` 等文件。Profile 中 `_engram_host_uva_gather_dequant_kernel` 共 166 次，确认本轮走 UVA；下一组单独切换 `aicpu_urma_cube_hbm`，避免和本轮混淆。
-
-## 历史：主线 + LMHead TP8，D0/DP0 running=12（第二次，2026-10-09）
-
-[打开 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-main-lmheadtp8-dp0-running12-20261009)
-
-- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-lmheadtp8-dp0-running12-20261009/dsv41-a5-main-lmheadtp8-revert18081-dp0-running12-ascend-output-20261009.tar.gz)
-- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-main-lmheadtp8-dp0-running12-20261009/SHA256SUMS)
-- SHA256：`5a86160ca1a80f5a044a6a086c6cecb8c28733a0707245c3b3bc57eaa4766a24`
-
-本压缩包只包含 D0/DP0/卡 0 的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
-
-| 项目 | 配置 / 结果 |
-| --- | --- |
-| 代码 | `linfeng-yuan/vllm-ascend:codex/dsv41-a5-main-perf-1009`，`63d01cd9`；基于上游主线并撤销 #18081 的相关装饰器改动 |
-| 服务 | P：两组 node-local DP8/EP8；D：跨 4 节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 4.15、force EPLB、recompute scheduler |
-| 图配置 | NPUGraphEx 开启；Static Kernel / Super Kernel 关闭；capture sizes `[72, 96]` |
-| 负载 | 384 并发、384 请求、输入 129054 tokens、输出 4096 tokens |
-| 采集目标 | D0 / DP0 / 卡 0，running=12、waiting=0 |
-| 采集窗口 | profiler 启停请求之间 2.000 秒；42 次活动采样均为 running=12、waiting=0 |
-| 请求结果 | 384 成功、0 失败，全部输出 4096 tokens |
-| Profiling 本轮性能 | TPOT 6.6 ms；AISBench output throughput 47,555.65 tokens/s |
-| 解析结果 | 177,857 条 kernel 记录；84 个 `_expand_idx_mapping_kernel` 标记、83 个相邻 step 间隔 |
-| Step 间隔 | P50 23.251 ms，P90 23.309 ms；其中 6 个 >=30 ms 的 profiling 扰动长尾 |
-
-解压后可直接查看 `ASCEND_PROFILER_OUTPUT/trace_view.json`、`kernel_details.csv`、`operator_details.csv`、`task_time.csv`、`analysis.db` 等离线解析结果。
-
-## 历史：1008 镜像基线，D0/DP0 running=12（第一次，2026-10-09）
-
-[打开第一次 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-dp0-running12-r2-20261009)
-
-- [下载第一次 profiling](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-dp0-running12-r2-20261009/dsv41-a5-dp0-running12-r2-20261009-raw.tar.gz)
-- SHA256：`4f162b79d5ceda4515324cf2cfa496cf38edfa0c8b4bd71bb83d841fbd9d4693`
-
-第一次为 10 月 8 日晚镜像基线、NPUGraphEx 关闭；与上面的“主线 + LMHead TP8”第二次采集分开保留，避免混淆。
+将脚本和 Proxy 文件放到 `/mnt/shared/l00517252/ylf/pd-clean`。在每台机器设置对应的 `NAME` 后执行：
 
 ```bash
-sha256sum -c SHA256SUMS
+IMAGE=vllm-ascend:dsv41-a5-pr17927-4cbe4962c-freshso-20261008
+NAME=dsv41-p0
+PD_DIR=/mnt/shared/l00517252/ylf/pd-clean
+
+docker run -itd \
+  --name "$NAME" \
+  --net host \
+  --shm-size 512g \
+  --device /dev/davinci0 \
+  --device /dev/davinci1 \
+  --device /dev/davinci2 \
+  --device /dev/davinci3 \
+  --device /dev/davinci4 \
+  --device /dev/davinci5 \
+  --device /dev/davinci6 \
+  --device /dev/davinci7 \
+  --device /dev/davinci_manager \
+  --device /dev/hisi_hdc \
+  --device /dev/ummu \
+  --device /dev/uburma \
+  -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+  -v /etc/ascend_install.info:/etc/ascend_install.info \
+  -v /etc/hccl_rootinfo.json:/etc/hccl_rootinfo.json:ro \
+  -v /etc/hixlep:/etc/hixlep:ro \
+  -v /usr/local/dcmi:/usr/local/dcmi \
+  -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+  -v /home/weights:/home/weights:ro \
+  -v "$PD_DIR":/workspace/pd \
+  "$IMAGE" bash
 ```
 
-## 问题 profiling：新 cann-bot wheels 后 D 打屏吞吐下降（不计入性能刷新序列，2026-10-10）
+其余节点只修改容器名：
 
-[打开问题定位 Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-whl060-issue-dp0-running12-20261010)
+```text
+dsv41-p1
+dsv41-d0
+dsv41-d1
+dsv41-d2
+dsv41-d3
+```
 
-- [下载卡 0 解析结果 `ASCEND_PROFILER_OUTPUT`](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-whl060-issue-dp0-running12-20261010/dsv41-a5-whl060-issue-dp0-running12-ascend-output-20261010.tar.gz)
-- [SHA256SUMS](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-whl060-issue-dp0-running12-20261010/SHA256SUMS)
-- SHA256：`db086f9d297a64632b4d4691481c5a8150bb8b18a8a4d0722df4b96b2cb3d6a6`
+## 2. 公共环境
 
-本条仅用于记录问题，不作为“第五次”性能刷新。压缩包只包含 D0/DP0/卡 0 已解析的 `ASCEND_PROFILER_OUTPUT/`，不包含其他卡、原始 `PROF_*`、`FRAMEWORK/`、服务日志或源码。
+`common_env.sh`：
 
-| 项目 | 配置 / 结果 |
+```bash
+#!/usr/bin/env bash
+source /root/.bashrc
+set -euo pipefail
+
+: "${LOCAL_IP:?set LOCAL_IP}"
+NIC=${NIC:-enp39s0f0}
+
+export HCCL_IF_IP="$LOCAL_IP"
+export GLOO_SOCKET_IFNAME="$NIC"
+export TP_SOCKET_IFNAME="$NIC"
+export HCCL_SOCKET_IFNAME="$NIC"
+export HCCL_ALGO=level0:fullmesh
+export HCCL_EXEC_TIMEOUT=2040
+export HCCL_CONNECT_TIMEOUT=1200
+export VLLM_RPC_TIMEOUT=3600000
+export VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=30000
+export VLLM_USE_V2_MODEL_RUNNER=1
+export ASCEND_LOCAL_COMM_RES_PATH=/etc/hixlep/
+export ASCEND_LOCAL_COMM_RES='{"version":"1.3"}'
+unset ASCEND_GLOBAL_RESOURCE_CONFIG || true
+export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+```
+
+## 3. Prefill
+
+`run_prefill.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source /workspace/pd/common_env.sh
+
+: "${P_GROUP:?set P_GROUP to 0 or 1}"
+
+MODEL=/home/weights/deepseek-ai--DeepSeek-V4.1-Flash
+SERVED_MODEL=deepseek-v41-a5-v0300-2p1d
+LOG_DIR=/workspace/pd/logs
+mkdir -p "$LOG_DIR"
+
+export HCCL_BUFFSIZE=512
+
+ENGRAM='{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}'
+SPEC='{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'
+EXTRA='{
+  "enable_cpu_binding":true,
+  "enable_force_eplb":true,
+  "combine_quant_mode":4,
+  "enable_fused_mc2":0,
+  "multistream_overlap_shared_expert":true,
+  "multistream_dsv4_dsa_overlap":true,
+  "multistream_engram_overlap":false,
+  "engram_lookup_backend":"aicpu_urma_cube_hbm",
+  "enable_dsa_cp":false,
+  "enable_flashcomm1":true,
+  "enable_shared_expert_dp":true
+}'
+
+for local_rank in {0..7}; do
+  port=$((8100 + local_rank))
+  engine_id=$((P_GROUP * 100 + local_rank))
+  KV=$(printf '{
+    "kv_connector":"MooncakeHybridConnector",
+    "kv_role":"kv_producer",
+    "kv_buffer_device":"npu",
+    "kv_buffer_size":1000000000,
+    "kv_port":"32000",
+    "engine_id":"%s",
+    "kv_connector_extra_config":{
+      "prefill":{"dp_size":8,"tp_size":1},
+      "decode":{"dp_size":32,"tp_size":1},
+      "ascend_local_comm_res_path":"/etc/hixlep"
+    }
+  }' "$engine_id")
+
+  ASCEND_RT_VISIBLE_DEVICES="$local_rank" \
+  vllm serve "$MODEL" \
+    --host 0.0.0.0 \
+    --port "$port" \
+    --served-model-name "$SERVED_MODEL" \
+    --data-parallel-size 8 \
+    --data-parallel-rank "$local_rank" \
+    --data-parallel-address "$LOCAL_IP" \
+    --data-parallel-rpc-port 13346 \
+    --tensor-parallel-size 1 \
+    --enable-expert-parallel \
+    --enable-ep-weight-filter \
+    --max-model-len 1048576 \
+    --max-num-batched-tokens 16384 \
+    --max-num-seqs 16 \
+    --block-size 128 \
+    --gpu-memory-utilization 0.92 \
+    --enable-prefix-caching \
+    --enforce-eager \
+    --async-scheduling \
+    --quantization deepseek_v4_fp8 \
+    --tokenizer-mode deepseek_v41 \
+    --tool-call-parser deepseek_v41 \
+    --reasoning-parser deepseek_v41 \
+    --enable-auto-tool-choice \
+    --trust-remote-code \
+    --safetensors-load-strategy lazy \
+    --speculative-config "$SPEC" \
+    --kv-transfer-config "$KV" \
+    --engram-config "$ENGRAM" \
+    --additional-config "$EXTRA" \
+    > "$LOG_DIR/p-r${local_rank}.log" 2>&1 &
+done
+
+wait
+```
+
+分别启动两台 P：
+
+```bash
+# P0
+docker exec -d -e LOCAL_IP=197.33.45.1 -e P_GROUP=0 \
+  dsv41-p0 bash /workspace/pd/run_prefill.sh
+
+# P1
+docker exec -d -e LOCAL_IP=197.33.46.1 -e P_GROUP=1 \
+  dsv41-p1 bash /workspace/pd/run_prefill.sh
+```
+
+## 4. Decode
+
+`run_decode.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source /workspace/pd/common_env.sh
+
+: "${DP_START:?set DP_START}"
+
+MODEL=/home/weights/deepseek-ai--DeepSeek-V4.1-Flash
+SERVED_MODEL=deepseek-v41-a5-v0300-2p1d
+D_MASTER=197.33.47.1
+LOG_DIR=/workspace/pd/logs
+mkdir -p "$LOG_DIR"
+
+export HCCL_BUFFSIZE=2048
+
+ENGRAM='{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}'
+SPEC='{
+  "method":"dspark",
+  "num_speculative_tokens":5,
+  "enforce_eager":false,
+  "rejection_sample_method":"synthetic",
+  "synthetic_acceptance_length":5.1
+}'
+COMPILE='{
+  "cudagraph_mode":"FULL_DECODE_ONLY",
+  "cudagraph_capture_sizes":[480,504]
+}'
+EXTRA='{
+  "enable_cpu_binding":true,
+  "enable_force_eplb":true,
+  "combine_quant_mode":4,
+  "enable_fused_mc2":0,
+  "multistream_overlap_shared_expert":true,
+  "multistream_dsv4_dsa_overlap":true,
+  "multistream_engram_overlap":true,
+  "engram_lookup_backend":"aicpu_urma_cube_hbm",
+  "enable_dsa_cp":false,
+  "finegrained_tp_config":{"lmhead_tensor_parallel_size":8},
+  "ascend_compilation_config":{
+    "enable_npugraph_ex":true,
+    "enable_static_kernel":true,
+    "enable_super_kernel":false
+  },
+  "scheduler_config":{"recompute_scheduler_enable":true}
+}'
+
+for local_rank in {0..7}; do
+  dp_rank=$((DP_START + local_rank))
+  port=$((8200 + local_rank))
+  engine_id=$((10 + dp_rank))
+  KV=$(printf '{
+    "kv_connector":"MooncakeHybridConnector",
+    "kv_role":"kv_consumer",
+    "kv_buffer_device":"npu",
+    "kv_buffer_size":1000000000,
+    "kv_port":"32100",
+    "engine_id":"%s",
+    "kv_connector_extra_config":{
+      "prefill":{"dp_size":8,"tp_size":1},
+      "decode":{"dp_size":32,"tp_size":1},
+      "ascend_local_comm_res_path":"/etc/hixlep"
+    }
+  }' "$engine_id")
+
+  ASCEND_RT_VISIBLE_DEVICES="$local_rank" \
+  vllm serve "$MODEL" \
+    --host 0.0.0.0 \
+    --port "$port" \
+    --served-model-name "$SERVED_MODEL" \
+    --data-parallel-size 32 \
+    --data-parallel-rank "$dp_rank" \
+    --data-parallel-address "$D_MASTER" \
+    --data-parallel-rpc-port 13345 \
+    --tensor-parallel-size 1 \
+    --enable-expert-parallel \
+    --enable-ep-weight-filter \
+    --max-model-len 1048576 \
+    --max-num-batched-tokens 1024 \
+    --max-num-seqs 84 \
+    --block-size 128 \
+    --gpu-memory-utilization 0.9 \
+    --no-enable-prefix-caching \
+    --async-scheduling \
+    --quantization deepseek_v4_fp8 \
+    --tokenizer-mode deepseek_v41 \
+    --tool-call-parser deepseek_v41 \
+    --reasoning-parser deepseek_v41 \
+    --enable-auto-tool-choice \
+    --trust-remote-code \
+    --safetensors-load-strategy lazy \
+    --speculative-config "$SPEC" \
+    --compilation-config "$COMPILE" \
+    --kv-transfer-config "$KV" \
+    --engram-config "$ENGRAM" \
+    --additional-config "$EXTRA" \
+    > "$LOG_DIR/d-r${dp_rank}.log" 2>&1 &
+done
+
+wait
+```
+
+四台 D 必须连续发起，不要等待 D0 单独 ready：
+
+```bash
+docker exec -d -e LOCAL_IP=197.33.47.1 -e DP_START=0  dsv41-d0 bash /workspace/pd/run_decode.sh
+docker exec -d -e LOCAL_IP=197.33.48.1 -e DP_START=8  dsv41-d1 bash /workspace/pd/run_decode.sh
+docker exec -d -e LOCAL_IP=197.33.49.1 -e DP_START=16 dsv41-d2 bash /workspace/pd/run_decode.sh
+docker exec -d -e LOCAL_IP=197.33.50.1 -e DP_START=24 dsv41-d3 bash /workspace/pd/run_decode.sh
+```
+
+## 5. Proxy
+
+48 个后端全部通过 `/health` 后，在 P0 启动 Proxy。
+
+`run_proxy.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+P_HOSTS=()
+P_PORTS=()
+D_HOSTS=()
+D_PORTS=()
+
+for ip in 197.33.45.1 197.33.46.1; do
+  for port in {8100..8107}; do
+    P_HOSTS+=("$ip")
+    P_PORTS+=("$port")
+  done
+done
+
+for ip in 197.33.47.1 197.33.48.1 197.33.49.1 197.33.50.1; do
+  for port in {8200..8207}; do
+    D_HOSTS+=("$ip")
+    D_PORTS+=("$port")
+  done
+done
+
+python /workspace/pd/load_balance_proxy_server_example.py \
+  --host 0.0.0.0 \
+  --port 8300 \
+  --workers 4 \
+  --prefiller-hosts "${P_HOSTS[@]}" \
+  --prefiller-ports "${P_PORTS[@]}" \
+  --decoder-hosts "${D_HOSTS[@]}" \
+  --decoder-ports "${D_PORTS[@]}"
+```
+
+```bash
+docker exec -d dsv41-p0 bash /workspace/pd/run_proxy.sh
+curl -f http://197.33.45.1:8300/healthcheck
+```
+
+健康状态应为 16 个 P、32 个 D：
+
+```json
+{"status":"ok","prefill_instances":16,"decode_instances":32,"request_num":0}
+```
+
+## 6. 实验结果
+
+以下为 global BS 2560 的干净 profiling 轮次。正式请求前 Proxy `request_num=0`；2560/2560 请求成功，每条实际输入 129054 tokens、输出 5096 tokens；32 个 D 均精确达到 `running=80`。
+
+| 项目 | 结果 |
 | --- | --- |
-| 代码 | `linfeng-yuan/vllm-ascend:codex/dsv41-a5-2200tps-r4-1010`，运行时代码截止 `5797a877`；未带后续 NZ 试验 |
-| Wheels | `cannbotdsl 0.6.0+g91e7c8f`，SHA256 `d77d5e7f…2c7cb7`；新版 `cannbot_arena_net_ops 0.1.0`，SHA256 `a7dd63fe…7c016` |
-| 服务 | P：两组 node-local DP8/EP8；D：跨 4 节点 external DP32/EP32/TP1；Proxy workers=4 |
-| D 关键配置 | MRV2、LMHead TP8、`max_num_seqs=16`、`max_num_batched_tokens=1024`、DSpark 5、synthetic 4.15、force EPLB、recompute scheduler |
-| 图配置 | NPUGraphEx 开启；Static Kernel / Super Kernel 关闭；capture sizes `[72, 96]` |
-| 无 profiling 第二轮 | 384 成功、0 失败，全部输出 4096；TPOT 6.0 ms、P90 6.1 ms；AISBench output throughput 49,381.0098 tokens/s |
-| 无 profiling 的 D 打屏 | 32 个 D 都实测到 running=12；峰值 1970.3～2082.4 tokens/s、均值 2024.5313；同代码旧 wheels 基线均值约 2228.44 |
-| Profiling 本轮性能 | 384 成功、0 失败，全部输出 4096；TPOT 6.6 ms、P90 6.8 ms；AISBench output throughput 45,858.6568 tokens/s |
-| Profiling 轮 D 打屏 | 32 个 D 峰值均对应 running=12；2081.1～2087.4 tokens/s，均值 2085.375 |
-| 采集 | D0/DP0/卡 0；触发时 running=12、waiting=0；profiler 启停请求间隔 2.004 秒 |
-| 解析 | 156,156 条 kernel；83 个 step 标记、82 个相邻 step 间隔；P50 23.963 ms、P90 24.028 ms；5 个 >=30 ms profiling 长尾 |
-| 对比 | 旧 wheels 的第四次 URMA profile step P50 为 22.706 ms；本轮增加 1.257 ms（+5.54%） |
-| 恢复旧 wheels A/B 第一轮 | 384/384 成功；AISBench 52,105.2357 tokens/s；TPOT 5.7 ms、P90 5.9 ms；ITL 平均 23.5 ms、中位 22.4 ms；D running=12 均值 2219.3 tokens/s |
-| 恢复旧 wheels A/B 第二轮 | 384/384 成功；AISBench 51,882.1490 tokens/s；TPOT 5.7 ms、P90 5.8 ms；ITL 平均 23.5 ms、中位 22.5 ms；D running=12 均值 2196.8594 tokens/s |
+| P / D 配置 | P `max_num_seqs=16`；D `max_num_seqs=84`，capture `[480,504]` |
+| AISBench output throughput | **99,659.3107 tokens/s** |
+| AISBench TPOT | 平均 **13.2 ms**，P90 **13.6 ms** |
+| D 打屏峰值 | **6172.9 tokens/s @ running=80, waiting=0** |
+| 卡0 profiling | 61,874 kernels；step interval P50 **64.081 ms** |
 
-逐 kernel 对比显示，`EngramUrmaGather` 本轮约 582.99 us/次，未比旧轮约 588.58 us/次变慢。主要差异集中在新版 wheel 启用的 `mixed_quant_sparse_flash_mla`、`QuantLightningIndexer`、`QuantSparseLightningIndexer` 路径；其额外单步开销与约 1.26 ms 的 step P50 增量基本吻合。同机保持代码、脚本和配置不变，六个容器恢复旧 wheels 后连续两轮 D 打屏均值恢复到 2219.3 / 2196.9 tokens/s，强支持性能回退来自新版 wheel 运行路径，而非当前服务配置。
+- [Profiling Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011)
+- [下载卡0 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz)
+
+该轮使用 synthetic acceptance length 5.1，仅用于性能比较，不代表真实接受率或准确率。
