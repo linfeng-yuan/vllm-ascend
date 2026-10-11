@@ -1,8 +1,6 @@
-# DeepSeek-V4.1 Flash on Ascend 950DT：2P4D 部署
+# DeepSeek-V4.1 Flash on Ascend 950DT：2P1D 部署
 
-本文记录当前 2P4D 环境的最小启动配置。脚本结构参考
-[vLLM Ascend v0.23.0 DeepSeek-V4-Pro / Ascend 950DT PD 分离示例](https://github.com/vllm-project/vllm-ascend/blob/v0.23.0/docs/source/tutorials/models/DeepSeek-V4-Pro.md#523-ascend-950dt-series-pd-separation-deployment)，
-参数按本次 DeepSeek-V4.1 Flash 实验调整。
+本文记录当前 DeepSeek-V4.1 Flash 2P1D 环境的最小启动配置。这里的 1D 是一个跨四台机器的 Decode 实例，其并行配置为 DP32/EP32/TP1。
 
 ## 环境
 
@@ -12,12 +10,17 @@
 | 系统 | openEuler 24.03，aarch64 |
 | CANN | 9.2.0 |
 | PyTorch / torch-npu | 2.10.0 / 2.10.0.post7 |
-| vLLM | 0.30.0+empty |
-| vLLM Ascend | 0.19.1rc2.dev2628+final4e9818638 |
+| vLLM / vLLM-Ascend | 0.30.0 |
 | 镜像 | `vllm-ascend:dsv41-a5-pr17927-4cbe4962c-freshso-20261008` |
 | 模型 | `/home/weights/deepseek-ai--DeepSeek-V4.1-Flash` |
-| served model | `deepseek-v41-a5-v0300-2p1d` |
-| 实验代码 | 基线 `5797a877`，叠加 compile 修复 `4058b6f` |
+| 实验代码 | 2026-10-09 主线基线；Static Kernel 实验叠加 [`4058b6f`](https://github.com/linfeng-yuan/vllm-ascend/commit/4058b6f63fded255b59069d29606c421759fa091)，恢复 `torch.compile` 装饰器并支持动态输入 |
+
+实验代码叠加以下四个公开 PR：
+
+- [#18101 AICPU URMA Cube offload](https://github.com/vllm-project/vllm-ascend/pull/18101)
+- [#18102 GateLinear for DeepSeek V4 routers](https://github.com/vllm-project/vllm-ascend/pull/18102)
+- [#18113 Overlap Engram projection](https://github.com/vllm-project/vllm-ascend/pull/18113)
+- [#18131 Remove TensorMove after DeepSeek V4.1 MXFP8 o_proj](https://github.com/vllm-project/vllm-ascend/pull/18131)
 
 数据网卡均为 `enp39s0f0`。
 
@@ -30,7 +33,7 @@
 | D2 | 197.33.49.1 | `dsv41-d2` | global DP 16–23 |
 | D3 | 197.33.50.1 | `dsv41-d3` | global DP 24–31 |
 
-P0 和 P1 是两个独立的 DP8 组，共 16 个 P API。D0–D3 组成一个 external DP32/EP32/TP1 组，共 32 个 D API。D 侧 LMHead TP 为 8。KV 传输使用 `MooncakeHybridConnector`，Proxy 使用 4 workers。
+P0 和 P1 是两个独立的 P 实例，每个实例为 DP8/EP8/TP1，共 16 个 P API。D0–D3 组成一个 external DP32/EP32/TP1 实例，共 32 个 D API。D 侧 LMHead TP 为 8。KV 传输使用 `MooncakeHybridConnector`，Proxy 使用 4 workers。
 
 ## 1. 启动容器
 
@@ -40,18 +43,13 @@ P0 和 P1 是两个独立的 DP8 组，共 16 个 P API。D0–D3 组成一个 e
 - `/etc/hixlep/`
 - 模型目录
 - 本文下面的四个脚本
-- v0.23.0 的
-  [`load_balance_proxy_server_example.py`](https://github.com/vllm-project/vllm-ascend/blob/v0.23.0/examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py)
+- [`load_balance_proxy_server_example.py`](https://github.com/vllm-project/vllm-ascend/blob/main/examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py)
 
-将脚本和 Proxy 文件放到 `/mnt/shared/l00517252/ylf/pd-clean`。在每台机器设置对应的 `NAME` 后执行：
+将脚本和 Proxy 文件放到 `/mnt/shared/l00517252/ylf/2p1d`。下面以 P0 为例，其余机器只修改容器名：
 
 ```bash
-IMAGE=vllm-ascend:dsv41-a5-pr17927-4cbe4962c-freshso-20261008
-NAME=dsv41-p0
-PD_DIR=/mnt/shared/l00517252/ylf/pd-clean
-
 docker run -itd \
-  --name "$NAME" \
+  --name dsv41-p0 \
   --net host \
   --shm-size 512g \
   --device /dev/davinci0 \
@@ -73,8 +71,8 @@ docker run -itd \
   -v /usr/local/dcmi:/usr/local/dcmi \
   -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
   -v /home/weights:/home/weights:ro \
-  -v "$PD_DIR":/workspace/pd \
-  "$IMAGE" bash
+  -v /mnt/shared/l00517252/ylf/2p1d:/workspace/pd \
+  vllm-ascend:dsv41-a5-pr17927-4cbe4962c-freshso-20261008 bash
 ```
 
 其余节点只修改容器名：
@@ -97,12 +95,11 @@ source /root/.bashrc
 set -euo pipefail
 
 : "${LOCAL_IP:?set LOCAL_IP}"
-NIC=${NIC:-enp39s0f0}
 
 export HCCL_IF_IP="$LOCAL_IP"
-export GLOO_SOCKET_IFNAME="$NIC"
-export TP_SOCKET_IFNAME="$NIC"
-export HCCL_SOCKET_IFNAME="$NIC"
+export GLOO_SOCKET_IFNAME=enp39s0f0
+export TP_SOCKET_IFNAME=enp39s0f0
+export HCCL_SOCKET_IFNAME=enp39s0f0
 export HCCL_ALGO=level0:fullmesh
 export HCCL_EXEC_TIMEOUT=2040
 export HCCL_CONNECT_TIMEOUT=1200
@@ -128,51 +125,19 @@ source /workspace/pd/common_env.sh
 
 : "${P_GROUP:?set P_GROUP to 0 or 1}"
 
-MODEL=/home/weights/deepseek-ai--DeepSeek-V4.1-Flash
-SERVED_MODEL=deepseek-v41-a5-v0300-2p1d
-LOG_DIR=/workspace/pd/logs
-mkdir -p "$LOG_DIR"
+mkdir -p /workspace/pd/logs
 
 export HCCL_BUFFSIZE=512
-
-ENGRAM='{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}'
-SPEC='{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}'
-EXTRA='{
-  "enable_cpu_binding":true,
-  "enable_force_eplb":true,
-  "combine_quant_mode":4,
-  "enable_fused_mc2":0,
-  "multistream_overlap_shared_expert":true,
-  "multistream_dsv4_dsa_overlap":true,
-  "multistream_engram_overlap":false,
-  "engram_lookup_backend":"aicpu_urma_cube_hbm",
-  "enable_dsa_cp":false,
-  "enable_flashcomm1":true,
-  "enable_shared_expert_dp":true
-}'
 
 for local_rank in {0..7}; do
   port=$((8100 + local_rank))
   engine_id=$((P_GROUP * 100 + local_rank))
-  KV=$(printf '{
-    "kv_connector":"MooncakeHybridConnector",
-    "kv_role":"kv_producer",
-    "kv_buffer_device":"npu",
-    "kv_buffer_size":1000000000,
-    "kv_port":"32000",
-    "engine_id":"%s",
-    "kv_connector_extra_config":{
-      "prefill":{"dp_size":8,"tp_size":1},
-      "decode":{"dp_size":32,"tp_size":1},
-      "ascend_local_comm_res_path":"/etc/hixlep"
-    }
-  }' "$engine_id")
 
   ASCEND_RT_VISIBLE_DEVICES="$local_rank" \
-  vllm serve "$MODEL" \
+  vllm serve /home/weights/deepseek-ai--DeepSeek-V4.1-Flash \
     --host 0.0.0.0 \
     --port "$port" \
-    --served-model-name "$SERVED_MODEL" \
+    --served-model-name deepseek-v41-a5-v0300-2p1d \
     --data-parallel-size 8 \
     --data-parallel-rank "$local_rank" \
     --data-parallel-address "$LOCAL_IP" \
@@ -195,11 +160,11 @@ for local_rank in {0..7}; do
     --enable-auto-tool-choice \
     --trust-remote-code \
     --safetensors-load-strategy lazy \
-    --speculative-config "$SPEC" \
-    --kv-transfer-config "$KV" \
-    --engram-config "$ENGRAM" \
-    --additional-config "$EXTRA" \
-    > "$LOG_DIR/p-r${local_rank}.log" 2>&1 &
+    --speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":true}' \
+    --kv-transfer-config "{\"kv_connector\":\"MooncakeHybridConnector\",\"kv_role\":\"kv_producer\",\"kv_buffer_device\":\"npu\",\"kv_buffer_size\":1000000000,\"kv_port\":\"32000\",\"engine_id\":\"${engine_id}\",\"kv_connector_extra_config\":{\"prefill\":{\"dp_size\":8,\"tp_size\":1},\"decode\":{\"dp_size\":32,\"tp_size\":1},\"ascend_local_comm_res_path\":\"/etc/hixlep\"}}" \
+    --engram-config '{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}' \
+    --additional-config '{"enable_cpu_binding":true,"enable_force_eplb":true,"combine_quant_mode":4,"enable_fused_mc2":0,"multistream_overlap_shared_expert":true,"multistream_dsv4_dsa_overlap":true,"multistream_engram_overlap":false,"engram_lookup_backend":"aicpu_urma_cube_hbm","enable_dsa_cp":false,"enable_flashcomm1":true,"enable_shared_expert_dp":true}' \
+    > "/workspace/pd/logs/p-r${local_rank}.log" 2>&1 &
 done
 
 wait
@@ -228,71 +193,23 @@ source /workspace/pd/common_env.sh
 
 : "${DP_START:?set DP_START}"
 
-MODEL=/home/weights/deepseek-ai--DeepSeek-V4.1-Flash
-SERVED_MODEL=deepseek-v41-a5-v0300-2p1d
-D_MASTER=197.33.47.1
-LOG_DIR=/workspace/pd/logs
-mkdir -p "$LOG_DIR"
+mkdir -p /workspace/pd/logs
 
 export HCCL_BUFFSIZE=2048
-
-ENGRAM='{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}'
-SPEC='{
-  "method":"dspark",
-  "num_speculative_tokens":5,
-  "enforce_eager":false,
-  "rejection_sample_method":"synthetic",
-  "synthetic_acceptance_length":5.1
-}'
-COMPILE='{
-  "cudagraph_mode":"FULL_DECODE_ONLY",
-  "cudagraph_capture_sizes":[480,504]
-}'
-EXTRA='{
-  "enable_cpu_binding":true,
-  "enable_force_eplb":true,
-  "combine_quant_mode":4,
-  "enable_fused_mc2":0,
-  "multistream_overlap_shared_expert":true,
-  "multistream_dsv4_dsa_overlap":true,
-  "multistream_engram_overlap":true,
-  "engram_lookup_backend":"aicpu_urma_cube_hbm",
-  "enable_dsa_cp":false,
-  "finegrained_tp_config":{"lmhead_tensor_parallel_size":8},
-  "ascend_compilation_config":{
-    "enable_npugraph_ex":true,
-    "enable_static_kernel":true,
-    "enable_super_kernel":false
-  },
-  "scheduler_config":{"recompute_scheduler_enable":true}
-}'
 
 for local_rank in {0..7}; do
   dp_rank=$((DP_START + local_rank))
   port=$((8200 + local_rank))
   engine_id=$((10 + dp_rank))
-  KV=$(printf '{
-    "kv_connector":"MooncakeHybridConnector",
-    "kv_role":"kv_consumer",
-    "kv_buffer_device":"npu",
-    "kv_buffer_size":1000000000,
-    "kv_port":"32100",
-    "engine_id":"%s",
-    "kv_connector_extra_config":{
-      "prefill":{"dp_size":8,"tp_size":1},
-      "decode":{"dp_size":32,"tp_size":1},
-      "ascend_local_comm_res_path":"/etc/hixlep"
-    }
-  }' "$engine_id")
 
   ASCEND_RT_VISIBLE_DEVICES="$local_rank" \
-  vllm serve "$MODEL" \
+  vllm serve /home/weights/deepseek-ai--DeepSeek-V4.1-Flash \
     --host 0.0.0.0 \
     --port "$port" \
-    --served-model-name "$SERVED_MODEL" \
+    --served-model-name deepseek-v41-a5-v0300-2p1d \
     --data-parallel-size 32 \
     --data-parallel-rank "$dp_rank" \
-    --data-parallel-address "$D_MASTER" \
+    --data-parallel-address 197.33.47.1 \
     --data-parallel-rpc-port 13345 \
     --tensor-parallel-size 1 \
     --enable-expert-parallel \
@@ -311,12 +228,12 @@ for local_rank in {0..7}; do
     --enable-auto-tool-choice \
     --trust-remote-code \
     --safetensors-load-strategy lazy \
-    --speculative-config "$SPEC" \
-    --compilation-config "$COMPILE" \
-    --kv-transfer-config "$KV" \
-    --engram-config "$ENGRAM" \
-    --additional-config "$EXTRA" \
-    > "$LOG_DIR/d-r${dp_rank}.log" 2>&1 &
+    --speculative-config '{"method":"dspark","num_speculative_tokens":5,"enforce_eager":false,"rejection_sample_method":"synthetic","synthetic_acceptance_length":5.1}' \
+    --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[480,504]}' \
+    --kv-transfer-config "{\"kv_connector\":\"MooncakeHybridConnector\",\"kv_role\":\"kv_consumer\",\"kv_buffer_device\":\"npu\",\"kv_buffer_size\":1000000000,\"kv_port\":\"32100\",\"engine_id\":\"${engine_id}\",\"kv_connector_extra_config\":{\"prefill\":{\"dp_size\":8,\"tp_size\":1},\"decode\":{\"dp_size\":32,\"tp_size\":1},\"ascend_local_comm_res_path\":\"/etc/hixlep\"}}" \
+    --engram-config '{"cpu_offload":true,"embedding_across_dp":false,"dp_shared_memory":true}' \
+    --additional-config '{"enable_cpu_binding":true,"enable_force_eplb":true,"combine_quant_mode":4,"enable_fused_mc2":0,"multistream_overlap_shared_expert":true,"multistream_dsv4_dsa_overlap":true,"multistream_engram_overlap":true,"engram_lookup_backend":"aicpu_urma_cube_hbm","enable_dsa_cp":false,"finegrained_tp_config":{"lmhead_tensor_parallel_size":8},"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":false},"scheduler_config":{"recompute_scheduler_enable":true}}' \
+    > "/workspace/pd/logs/d-r${dp_rank}.log" 2>&1 &
 done
 
 wait
