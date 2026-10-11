@@ -2,6 +2,18 @@
 
 Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不包含 vLLM / vLLM-Ascend 源码。
 
+## compilefix + Static Kernel + synthetic 5.1：三档 profiling（2026-10-10～11）
+
+三档均使用同一套代码和服务拓扑：运行代码 `5797a877`，只叠加 compile 装饰器修复 `4058b6f`；P 为两组 node-local DP8/EP8，D 为跨四节点 external DP32/EP32/TP1，Proxy workers=4；LMHead TP8、DSpark 5、force EPLB、recompute scheduler、AICPU URMA Engram、NPUGraphEx 与 Static Kernel 开启、Super Kernel 关闭，synthetic acceptance length 5.1。synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。每个压缩包都只包含 D0/DP0/卡0 离线解析后的 `ASCEND_PROFILER_OUTPUT/`。
+
+| global BS | D 配置与实测 running | AISBench / D 打屏 | 卡0解析摘要 | 下载 |
+| --- | --- | --- | --- | --- |
+| 384 | `max_num_seqs=16`，capture `[72,96]`；32/32 D 达到 running=12 | 整体 output throughput **54,974.1283 tok/s**；TPOT avg/P90 **4.9/5.2 ms**；running=12 单 DP 打屏峰值范围 **2852.3～2859.1 tok/s** | 148,943 kernels；79 markers；step interval P50 **21.672 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-20261010/dsv41-a5-compilefix-static-syn51-c384-dp0-running12-ascend-output-20261010.tar.gz) |
+| 1536 | `max_num_seqs=50`，capture `[288,300]`；32/32 D 达到 running=48 | 整体 output throughput **99,182.2707 tok/s**；TPOT avg/P90 **9.5/10.0 ms**；running=48 单 DP 打屏峰值范围 **5561.4～5588.6 tok/s** | 86,202 kernels；46 markers；step interval P50 **44.036 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-20261010/dsv41-a5-compilefix-static-syn51-c1536-dp0-running48-ascend-output-20261010.tar.gz) |
+| 2560 | `max_num_seqs=84`，capture `[480,504]`，`HCCL_BUFFSIZE=2048`；32/32 D 精确达到 running=80 | 整体 output throughput **99,659.3107 tok/s**；TPOT avg/P90 **13.2/13.6 ms**；严格 running=80 单 DP 打屏峰值 **6172.9 tok/s** | 61,874 kernels；33 markers；step interval P50 **64.081 ms** | [Release](https://github.com/linfeng-yuan/vllm-ascend/releases/tag/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011) / [压缩包](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz) |
+
+2560 profiling 是清场并以新 TAG 拉起后的干净轮次：正式请求前 Proxy `request_num=0`；2560/2560 成功、0 失败，每条实际输入 129054、输出 5096 tokens；D 成功计数和生成 token 增量严格匹配，每个 D 恰好处理 80 个请求。输出比原性能基准延长 1000 tokens，只用于保证稳定 running=80 采集窗口。32 个 rank 的 metrics 都达到 running=80；受 vLLM 打屏周期影响，其中 29 个留下了恰好 running=80 的日志行，另外 3 个只有相邻 active 窗口，因此不伪造缺失的逐 rank 打屏值。
+
 ## 最新性能记录：global BS 2560 / 全部 D running=80（无 profiling，2026-10-10）
 
 本条沿用 1536 并发热态配置，将 D 的 `max_num_seqs` 调为 84，并把捕获档位严格限定为 `[480, 504]`：DSpark 5 对应每请求 6 个槽位，因此稳态 `80 × 6 = 480`，容量上限 `84 × 6 = 504`。首轮输出长度 4096 已使全部 32 个 D 达到 running=80，因此没有加长输出或重跑。本轮只测性能，不采集 profiling；synthetic acceptance 仅用于性能比较，不代表真实接受率或准确率。
@@ -22,8 +34,8 @@ Profiling 产物放在 GitHub Releases。本分支只保留本说明文件，不
 | AISBench TTFT | 平均 24,237.3 ms；中位 23,155.8 ms；P75 27,522.9 ms；P90 32,531.7 ms；P99 39,556.3 ms |
 | AISBench TPOT | **平均 14.6 ms**；中位 14.4 ms；P75 16.1 ms；P90 **17.4 ms**；P99 17.6 ms |
 | AISBench ITL | 平均 74.7 ms；中位 0.0 ms；P75 123.1 ms；P90 164.1 ms；P99 464.7 ms；0 中位来自该工具在高并发流式批次中的时间点记法，不代表真实零延迟 |
-| D 打屏，指定 running=80 | 32 个 DP 的 `Avg generation throughput` 峰值范围 **6367.1～7272.2 tokens/s**，均值 **6522.1094 tokens/s**，中位 6404.6 tokens/s；全轮单 DP 最大值为 **DP7 7272.2 tokens/s @ running=80, waiting=0** |
-| D 打屏换算 | 按 `80 / throughput × 1000`，各 DP 独立峰值对应约 **11.001～12.565 ms/output-token**，逐 DP 换算均值约 12.288 ms/output-token；该换算不等同于 AISBench TPOT / ITL |
+| D 打屏，稳定 running=80 | 去除进入/退出稳态的过渡窗口后，96 个 `prompt=0, running=80` 打屏值范围 **6359.8～6406.3 tokens/s**，均值 **6376.0667 tokens/s**；各 DP 稳态中位数范围 6362.4～6368.4 tokens/s。此前记录的 7272.2 是过渡统计窗口，不作为稳定 running=80 峰值 |
+| D 打屏换算 | 按 `80 / throughput × 1000`，稳定窗口对应约 **12.488～12.579 ms/output-token**，按均值换算约 **12.547 ms/output-token**；该换算不等同于 AISBench TPOT / ITL |
 | External KV | hits / queries = 330,375,680 / 330,378,240，命中率约 99.9992% |
 | 通信与错误检查 | 正式测试偏移后截取的 32 个 D 日志中未出现 `Gloo`、all-reduce fallback、MC2 capacity 回退、HCCL error、`ERROR`、`Traceback`、507018、OOM 或 shape mismatch |
 | 脚本证据 | D 脚本 SHA256 `2c6b6d9de021625823440830c3e8f12eda4a90caed7235f46275e6fb660085b2`；P 脚本 SHA256 `93fabb2e3183e36e065747b2f26b48e0c5f81c9b2c638b9a1b4a19e6a76db646` |
