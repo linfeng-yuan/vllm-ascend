@@ -309,3 +309,21 @@ curl -f http://197.33.45.1:8300/healthcheck
 | 2560 | `max_num_seqs=84`，capture `[480,504]`，`HCCL_BUFFSIZE=2048` | 32/32 DP 达到 `running=80` | 各 DP 峰值 **6359.8–6406.3 tokens/s** | P50 **64.081 ms**；[下载 profiling](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-20261011/dsv41-a5-compilefix-static-syn51-c2560-dp0-running80-ascend-output-20261011.tar.gz) |
 
 三档均为 synthetic acceptance length 5.1，仅用于性能比较，不代表真实接受率或准确率。Profiling 压缩包只包含 D0/DP0/卡0 解析后的 `ASCEND_PROFILER_OUTPUT/`。
+
+## 7. DeepInfer 离线 Decode 对照与单卡 Profiling（2026-10-21）
+
+DeepInfer 使用 4 机 32 卡，DP32/EP32/CP1，输入 129054 tokens，nextn=5，零冗余专家、force load balance、YoCo 关闭。每档 `max_num_seqs=B`，verifier/draft 只捕获对应的单个图，大小分别为 `B*6` 和 `B`，避免额外 padding。运行时为 CANN 9.2.0、Python 3.12.13、PyTorch 2.13.0、torch-npu 2.13.0rc1。
+
+先完成上下文准备和 decode 预热，无 profiling 的稳态计时每档收齐 32 个 DP、共 1728 个有效样本。另起采集轮，全部 32 个 DP 同步进入固定满载 decode 阶段，仅 DP0/卡0 开启 profiler，约 2 秒后停止，并在服务器完成离线解析。
+
+| global BS | 每 DP batch | 无 profiling engine step P50 | Profiling marker step P50 | 实际启停间隔 | Kernel 记录 | 单卡解析包 |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 384 | 12 | 23.705 ms | 23.717 ms | 2.000292 s | 119,197 | [下载 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-deepinfer-c384-dp0-running12-20261021/dsv41-a5-deepinfer-c384-dp0-running12-ascend-output-20261021.tar.gz) |
+| 1536 | 48 | 43.083 ms | 43.165 ms | 2.037609 s | 67,318 | [下载 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-deepinfer-c1536-dp0-running48-20261021/dsv41-a5-deepinfer-c1536-dp0-running48-ascend-output-20261021.tar.gz) |
+| 2560 | 80 | 58.343 ms | 58.380 ms | 2.052346 s | 50,478 | [下载 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-deepinfer-c2560-dp0-running80-20261021/dsv41-a5-deepinfer-c2560-dp0-running80-ascend-output-20261021.tar.gz) |
+
+Profiling step 采用 `_prepare_verification_metadata_kernel` 相邻启动时间差；该 kernel 经源码及采集计数交叉确认每 decode step 出现一次。三档分别有 85/48/36 个标记，形成 84/47/35 个间隔。压缩包顶层仅含 `ASCEND_PROFILER_OUTPUT/`；各 Release 同时提供 `SHA256SUMS` 和 `capture-window.json`。
+
+DeepInfer 使用固定 6-token verifier 预算，采样为 temperature=0.3、top_p=0.95、top_logprobs=5，**未注入 vLLM synthetic acceptance 5.1 分布**。按平均推进 5.1 token 折算的吞吐约为 2582/5682/6993 tokens/s/卡，只是派生估算。DeepInfer 通过 fork 共享物理 KV 前缀；历史 vLLM D 侧关闭 prefix cache，且使用不同的 padding 和计时边界。因此本节不把两者视为完全同口径的在线服务比较。
+
+本轮 profiler 未能自动获取 NPU 并行通信组，`communication_matrix.json` 为空；kernel 活动与 step 标记已校验，但不能据此计算完整通信矩阵或把融合 MoE 核全部计为纯通信。
