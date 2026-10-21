@@ -327,3 +327,16 @@ Profiling step 采用 `_prepare_verification_metadata_kernel` 相邻启动时间
 DeepInfer 使用固定 6-token verifier 预算，采样为 temperature=0.3、top_p=0.95、top_logprobs=5，**未注入 vLLM synthetic acceptance 5.1 分布**。按平均推进 5.1 token 折算的吞吐约为 2582/5682/6993 tokens/s/卡，只是派生估算。DeepInfer 通过 fork 共享物理 KV 前缀；历史 vLLM D 侧关闭 prefix cache，且使用不同的 padding 和计时边界。因此本节不把两者视为完全同口径的在线服务比较。
 
 本轮 profiler 未能自动获取 NPU 并行通信组，`communication_matrix.json` 为空；kernel 活动与 step 标记已校验，但不能据此计算完整通信矩阵或把融合 MoE 核全部计为纯通信。
+
+
+## 8. EP32 总并发32双框架单卡 Profiling（2026-10-21）
+
+DP32 / EP32 / TP1 / CP1，每 DP batch=1，上下文129054 tokens，nextn=5，冗余专家0。仅采集DP0/卡0，在服务器完成离线解析后压缩。
+
+| 框架 | 场景 | 采集间隔 | 单卡解析包 |
+| --- | --- | ---: | --- |
+| DeepInfer | 离线 decode，B1，补采 | 2.007322 s | [下载 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-deepinfer-c32-dp0-running1-20261021/dsv41-a5-deepinfer-c32-dp0-running1-ascend-output-20261021.tar.gz) |
+| vLLM-Ascend | 原容器 P/D + AISBench，总并发32复测 | 2.000278 s | [下载 ASCEND_PROFILER_OUTPUT](https://github.com/linfeng-yuan/vllm-ascend/releases/download/dsv41-a5-vllm-ascend-c32-dp0-running1-20261021/dsv41-a5-vllm-ascend-c32-dp0-running1-ascend-output-20261021.tar.gz) |
+
+两份压缩包均按 global BS 命名，顶层仅含 `ASCEND_PROFILER_OUTPUT/`。各 Release 附 `capture-window.json`、`profile-summary.json` 和 `SHA256SUMS`。vLLM使用今日已完成的同配置2秒采集；DeepInfer本次补采。启停原始时间戳保存在采集窗口附件中。
+
