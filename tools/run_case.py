@@ -7,6 +7,7 @@ import os
 import pathlib
 import random
 import re
+import signal
 import statistics
 import subprocess
 import threading
@@ -18,7 +19,7 @@ ROOT = pathlib.Path('/workspace/experiment')
 MODEL = '/models/DeepSeek-V4-Pro-0813'
 MODEL_NAME = 'dsv4-pro-0813'
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-FIELDS = ['num_requests_running', 'num_requests_waiting', 'request_success_total', 'generation_tokens_total', 'prefix_cache_queries_total', 'prefix_cache_hits_total', 'external_prefix_cache_queries_total', 'external_prefix_cache_hits_total', 'time_to_first_token_seconds_sum', 'time_to_first_token_seconds_count', 'request_queue_time_seconds_sum', 'request_queue_time_seconds_count', 'e2e_request_latency_seconds_sum', 'e2e_request_latency_seconds_count']
+FIELDS = ['num_requests_running', 'num_requests_waiting', 'request_success_total', 'generation_tokens_total', 'prefix_cache_queries_total', 'prefix_cache_hits_total', 'external_prefix_cache_queries_total', 'external_prefix_cache_hits_total', 'time_to_first_token_seconds_sum', 'time_to_first_token_seconds_count', 'request_queue_time_seconds_sum', 'request_queue_time_seconds_count', 'e2e_request_latency_seconds_sum', 'e2e_request_latency_seconds_count', 'kv_cache_usage_perc', 'num_preemptions_total', 'request_num_preemptions_sum']
 
 
 def http(url, data=None, timeout=20):
@@ -45,6 +46,7 @@ def metric(target):
         raw = http(target['url'] + '/metrics', timeout=4).decode()
         row['values'] = {key: 0.0 for key in FIELDS}
         row['raw'] = []
+        row['metrics_present'] = []
         for line in raw.splitlines():
             if not line or line.startswith('#'):
                 continue
@@ -53,6 +55,7 @@ def metric(target):
             if key in row['values']:
                 row['values'][key] += float(line.rsplit(' ', 1)[1])
                 row['raw'].append(line)
+                row['metrics_present'].append(key)
     except Exception as exc:
         row['error'] = repr(exc)
     return row
@@ -139,7 +142,7 @@ def summarize_monitor(case, ds, before, after):
         waiting = [s['values']['num_requests_waiting'] for s in valid]
         initial = next(s for s in before if s['role'] == 'D' and s['rank'] == endpoint['rank'])['values']
         final = next(s for s in after if s['role'] == 'D' and s['rank'] == endpoint['rank'])['values']
-        rows.append(dict(endpoint, samples=len(valid), running_peak=max(running, default=0), running_mean=statistics.mean(running) if running else None, waiting_peak=max(waiting, default=0), success_delta=final['request_success_total'] - initial['request_success_total'], generation_tokens_delta=final['generation_tokens_total'] - initial['generation_tokens_total']))
+        rows.append(dict(endpoint, samples=len(valid), running_peak=max(running, default=0), running_mean=statistics.mean(running) if running else None, waiting_peak=max(waiting, default=0), success_delta=final['request_success_total'] - initial['request_success_total'], generation_tokens_delta=final['generation_tokens_total'] - initial['generation_tokens_total'], kv_usage_peak=max((s['values']['kv_cache_usage_perc'] for s in valid),default=None), preemptions_delta=final['num_preemptions_total']-initial['num_preemptions_total'], request_preemptions_sum_delta=final['request_num_preemptions_sum']-initial['request_num_preemptions_sum'], kv_preemption_metrics_present=all(set(['kv_cache_usage_perc','num_preemptions_total','request_num_preemptions_sum']) <= set(s.get('metrics_present',[])) for s in valid)))
     grouped = {}
     for s in samples:
         if s.get('role') == 'D':
@@ -163,6 +166,8 @@ def main():
     parser.add_argument('--concurrency', type=int, required=True)
     parser.add_argument('--data-num', type=int)
     parser.add_argument('--request-index-start', type=int, default=0)
+    parser.add_argument('--kv-usage-limit', type=float)
+    parser.add_argument('--sample-interval', type=float, default=1)
     parser.add_argument('--input-len', type=int, required=True)
     parser.add_argument('--output-len', type=int, required=True)
     parser.add_argument('--prefix-fraction', type=float, default=0)
@@ -172,6 +177,8 @@ def main():
     parser.add_argument('--case-id', required=True)
     parser.add_argument('--dry-run', action='store_true')
     a = parser.parse_args()
+    assert a.kv_usage_limit is None or 0 < a.kv_usage_limit <= 1
+    assert a.sample_interval > 0
     case = ROOT / 'benchmarks' / a.case_id
     case.mkdir(parents=True, exist_ok=False)
     count = a.data_num if a.data_num is not None else 6 * a.concurrency
@@ -236,6 +243,17 @@ def main():
     assert len(offsets) == len(ds), offsets
     (case / 'log-offsets.json').write_text(json.dumps(offsets, indent=2))
     stop = threading.Event()
+    guard_events = []
+    proc = None
+    def abort_client(reason):
+        if not guard_events:
+            guard_events.append(reason)
+            (case / 'guard-triggered.json').write_text(json.dumps(reason,indent=2))
+            if proc is not None and proc.poll() is None:
+                try:
+                    os.killpg(proc.pid,signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
     def monitor():
         tick = 0
         with (case / 'samples.jsonl').open('w') as stream, (case / 'proxy-samples.jsonl').open('w') as proxy_stream, cf.ThreadPoolExecutor(max_workers=36) as pool:
@@ -244,6 +262,12 @@ def main():
                 for row in pool.map(metric, ps + ds):
                     row['tick'] = tick
                     stream.write(json.dumps(row) + '\n')
+                    if a.kv_usage_limit is not None and row.get('role')=='D' and 'error' not in row:
+                        v=row['values'];baseline=next(z['values'] for z in before if z['role']=='D' and z['rank']==row['rank'])
+                        if not set(['kv_cache_usage_perc','num_preemptions_total','request_num_preemptions_sum']) <= set(row.get('metrics_present',[])):
+                            abort_client(dict(reason='required KV/preemption metric unavailable',sample=row))
+                        elif v['kv_cache_usage_perc']>=a.kv_usage_limit or v['num_preemptions_total']>baseline['num_preemptions_total'] or v['request_num_preemptions_sum']>baseline['request_num_preemptions_sum']:
+                            abort_client(dict(reason='KV limit or preemption guard',limit=a.kv_usage_limit,sample=row))
                 try:
                     proxy_row = {'tick': tick, 'time': time.time(), 'value': json.loads(http(proxy_url + '/healthcheck', timeout=4))}
                 except Exception as exc:
@@ -251,13 +275,22 @@ def main():
                 proxy_stream.write(json.dumps(proxy_row) + '\n')
                 stream.flush(); proxy_stream.flush()
                 tick += 1
-                stop.wait(max(0, 1 - (time.monotonic() - start)))
+                stop.wait(max(0, a.sample_interval - (time.monotonic() - start)))
     thread = threading.Thread(target=monitor)
     thread.start()
     started = time.time()
     try:
         with (case / 'aisbench.log').open('w') as stream:
-            result = subprocess.run(cmd, stdout=stream, stderr=subprocess.STDOUT, env=dict(os.environ, TORCH_DEVICE_BACKEND_AUTOLOAD='0', NO_PROXY='*', TOKENIZERS_PARALLELISM='true', RAYON_NUM_THREADS='16'), timeout=7200)
+            proc = subprocess.Popen(cmd, stdout=stream, stderr=subprocess.STDOUT, env=dict(os.environ, TORCH_DEVICE_BACKEND_AUTOLOAD='0', NO_PROXY='*', TOKENIZERS_PARALLELISM='true', RAYON_NUM_THREADS='16'),start_new_session=True)
+            if guard_events:
+                os.killpg(proc.pid,signal.SIGTERM)
+            try:
+                proc.wait(timeout=7200)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid,signal.SIGTERM)
+                proc.wait(timeout=30)
+                raise
+            result=proc
         ended = time.time()
         (case / 'window.json').write_text(json.dumps({'started': started, 'ended': ended, 'returncode': result.returncode, 'command': cmd, 'concurrency': a.concurrency, 'data_num': count}, indent=2))
         time.sleep(12)
@@ -271,6 +304,14 @@ def main():
         with p.open('rb') as source:
             source.seek(offset)
             (case / 'decode-window-logs' / p.name).write_bytes(source.read())
+    recompute_matches=[]
+    for p in (case/'decode-window-logs').glob('*.log'):
+        for line in p.read_text(errors='replace').splitlines():
+            if re.search(r'sending.*request back to P for recomputation|KV offload.*(?:unavailable|failed|raised)|preempted.*(?:recompute|RECOMPUTE)',line,re.I):
+                recompute_matches.append(dict(log=p.name,line=line))
+    validation={'kv_usage_limit':a.kv_usage_limit,'sample_interval_seconds':a.sample_interval,'guard_events':guard_events,'per_dp':[{k:v for k,v in z.items() if k in ['rank','node','samples','kv_usage_peak','preemptions_delta','request_preemptions_sum_delta','kv_preemption_metrics_present']} for z in summary['per_dp']],'recompute_log_matches':recompute_matches}
+    validation['passed']=not guard_events and not recompute_matches and all(z['kv_preemption_metrics_present'] and z['preemptions_delta']==0 and z['request_preemptions_sum_delta']==0 and (a.kv_usage_limit is None or z['kv_usage_peak']<a.kv_usage_limit) for z in summary['per_dp'])
+    (case/'kv-preemption-validation.json').write_text(json.dumps(validation,indent=2))
     cache_before = sum(s['values']['prefix_cache_hits_total'] for s in before if s['role'] == 'P')
     cache_after = sum(s['values']['prefix_cache_hits_total'] for s in after if s['role'] == 'P')
     queries_before = sum(s['values']['prefix_cache_queries_total'] for s in before if s['role'] == 'P')

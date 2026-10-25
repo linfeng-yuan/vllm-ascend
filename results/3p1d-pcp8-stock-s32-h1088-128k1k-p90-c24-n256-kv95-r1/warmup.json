@@ -1,0 +1,113 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "rank": 0,
+    "url": "http://197.33.45.1:18100",
+    "response": {
+      "id": "cmpl-b9b1c6c06347f681",
+      "object": "text_completion",
+      "created": 1792932374,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 117952,
+        "total_tokens": 117953,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "P",
+    "node": 25,
+    "rank": 1,
+    "url": "http://197.33.49.1:18100",
+    "response": {
+      "id": "cmpl-9762cfcf93978237",
+      "object": "text_completion",
+      "created": 1792932368,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 117952,
+        "total_tokens": 117953,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "P",
+    "node": 27,
+    "rank": 2,
+    "url": "http://197.33.51.1:18100",
+    "response": {
+      "id": "cmpl-bc42bffdc33e8fe7",
+      "object": "text_completion",
+      "created": 1792932378,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 117952,
+        "total_tokens": 117953,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  }
+]

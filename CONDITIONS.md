@@ -150,3 +150,11 @@ P 的 max-num-seqs=16、max-num-batched-tokens=8192、max-model-len=1048576、GP
 其他服务参数不变，继续使用原镜像源码和算子。客户端固定 64 并发、256 请求，逐条输入/输出为 131072/1024 tokens，90% 固定文本前缀对应实际 87.5007% 缓存命中。本轮未继续测试 96%。
 
 重启前核对本实验容器归属与在途请求，向上一轮 D API 发送 SIGTERM 后再停止本实验 D 容器；不操作其他容器、驱动或网络。启动后确认五个后端健康、两台 D 图捕获完成、Proxy 健康和 PD 请求预热通过。逐进程命令、源码核对和健康检查保存在 `launch-records/3p1d-s32/`。
+
+## 当前 KV 低于 95% 的工作点
+
+采用 **客户端并发 24、请求数 256**，保持 3P1D、64 卡、D max-num-seqs=32、HCCL_BUFFSIZE=1088、128K/1K、90% 固定文本前缀和原镜像代码。未重启服务或修改模型参数。D 本地 prefix caching 关闭，P 开启。
+
+先验证 20 并发，再验证 24 并发。测试工具每 0.5 秒采样 D `kv_cache_usage_perc`、`num_preemptions_total`、`request_num_preemptions_sum`，同时保留指标是否实际存在的信息。达到 KV 95% 或检测到抢占增量即停止该次 AISBench 客户端进程组。测试完成后检查本轮日志字节偏移之后的返 P 重算消息，保存 `kv-preemption-validation.json`。这两组均全量成功、KV 峰值低于 95%、抢占增量为 0、返 P 重算日志匹配数为 0。
+
+24 并发的两台 D KV 峰值为 90.6067%、90.6164%。对应配置保存在 `profiles/3p1d-128k1k-p90-kv95.json`。本次调整的是 AISBench 客户端并发，服务端 max-num-seqs 仍为 32。20/24 两组的请求后缀 index 起点分别为 3000/4000。

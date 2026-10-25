@@ -1,0 +1,18 @@
+{
+  "topology": "3P1D, 48P + 16D, total64 cards",
+  "decode_max_num_seqs": 32,
+  "decode_hccl_buffsize": 1088,
+  "decode_local_prefix_caching": false,
+  "prefill_prefix_caching": true,
+  "concurrency": 24,
+  "data_num": 256,
+  "input_tokens": 131072,
+  "output_tokens": 1024,
+  "nominal_text_prefix_fraction": 0.9,
+  "observed_prefix_fraction": 0.875006675771147,
+  "kv_usage_limit": 0.95,
+  "sample_interval_seconds": 0.5,
+  "validated_case": "3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1",
+  "service_tag": "3p1d-pcp8-prefix-stock-s32-h1088-r18",
+  "p_service_tag": "3p1d-pcp8-prefix-mc2local-h320-r14"
+}

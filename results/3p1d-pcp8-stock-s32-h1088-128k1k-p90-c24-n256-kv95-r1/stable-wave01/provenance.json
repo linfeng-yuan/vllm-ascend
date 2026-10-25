@@ -1,0 +1,22 @@
+{
+  "source_case": "/workspace/experiment/benchmarks/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1",
+  "wave_offset": 0.1,
+  "original_source": "/vllm-workspace/vllm-ascend/benchmark/ais_bench/benchmark/calculators/stable_perf_metric_calculator.py",
+  "source_sha256": "de789cced05b4948b493be4c60f0c883ea7ca14444fc8491f16d18747795386e",
+  "command": [
+    "/usr/local/python3.12.13/bin/python",
+    "/workspace/experiment/scripts/aisbench_wave01.py",
+    "/workspace/experiment/benchmarks/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/stable-wave01/config.py",
+    "--mode",
+    "perf",
+    "--reuse",
+    "20261025_124612",
+    "--work-dir",
+    "/workspace/experiment/benchmarks/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/stable-wave01/output",
+    "--debug"
+  ],
+  "inference_skipped_by_reuse": true,
+  "started": 1792932573.4041781,
+  "returncode": 0,
+  "ended": 1792932584.9825685
+}

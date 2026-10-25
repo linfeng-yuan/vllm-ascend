@@ -14,6 +14,8 @@ a = parser.parse_args()
 case = pathlib.Path(a.case)
 destination = case / 'stable-wave01'
 summary = json.loads((destination / 'result-summary.json').read_text())
+validation_path = case / 'kv-preemption-validation.json'
+sample_interval = json.loads(validation_path.read_text()).get('sample_interval_seconds', 1) if validation_path.exists() else 1
 window = json.loads((destination / 'steady-window.json').read_text())
 # AISBench use_timestamp=False stores monotonic/perf_counter timestamps.
 # Metrics samples use Unix wall time. Both come from the same node 22 kernel.
@@ -41,7 +43,8 @@ with original_csv.open(newline='') as stream:
 max_e2el_ms = number(e2el['Max'])
 result = {'window_start_unix_estimate': start, 'window_end_unix_estimate': end,
           'clock_offset_unix_minus_perf_counter': offset,
-          'clock_alignment': 'same-host monotonic-to-wall offset measured during analysis; 1-second metrics sampling',
+          'clock_alignment': 'same-host monotonic-to-wall offset measured during analysis; %g-second metrics sampling' % sample_interval,
+          'sample_interval_seconds': sample_interval,
           'samples': len(complete), 'dp_count': dp_count,
           'd_total_running_mean': statistics.mean(totals),
           'per_dp_running_mean': statistics.mean(totals) / dp_count,

@@ -1,0 +1,32 @@
+[
+  {
+    "url": "http://197.33.45.1:18100/health",
+    "status": 200,
+    "body": ""
+  },
+  {
+    "url": "http://197.33.49.1:18100/health",
+    "status": 200,
+    "body": ""
+  },
+  {
+    "url": "http://197.33.51.1:18100/health",
+    "status": 200,
+    "body": ""
+  },
+  {
+    "url": "http://197.33.47.1:18200/health",
+    "status": 200,
+    "body": ""
+  },
+  {
+    "url": "http://197.33.48.1:18200/health",
+    "status": 200,
+    "body": ""
+  },
+  {
+    "url": "http://197.33.45.1:18300/healthcheck",
+    "status": 200,
+    "body": "{\"status\":\"ok\",\"prefill_instances\":3,\"decode_instances\":2,\"request_num\":0}"
+  }
+]

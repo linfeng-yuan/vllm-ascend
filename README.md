@@ -1,5 +1,7 @@
 # DeepSeek-V4-Pro-0813 PD 性能测试
 
+当前 KV 低于 95% 的已验证工作点为 **3P1D，AISBench 24 并发 / 256 请求**；D 保持 `max-num-seqs=32`、`HCCL_BUFFSIZE=1088`。两个 D 的 KV 采样峰值为 **90.61%、90.62%**，抢占增量为 0，日志没有返 P 重算。D 本地 prefix caching 关闭。参数见 [当前测试配置](profiles/3p1d-128k1k-p90-kv95.json)，完整结果见本页最后一节。
+
 2026-10-25，Ascend 950DT。保存 4K 输入 / 2K 输出的两种 D 并行配置复测，以及 128K 输入 / 1K 输出的 3P1D prefix 测试结果和启动条件。
 
 两组使用相同 r35 镜像、原镜像内 vLLM / vLLM-Ascend 代码和算子、同一模型权重，没有叠加 MC2 容量修改。完整环境和参数见 [测试条件](CONDITIONS.md)，逐个进程的实际参数见 [启动记录](launch-records/)，按节点整理的命令见 [启动脚本](launch/)。
@@ -128,3 +130,33 @@ Running 使用 AISBench 稳态窗口内的同窗采样；上述延迟和 token �
 为避免完整输入后缀被上一轮缓存，本轮 `request_index_start=2000`，前一轮为 1000。共同前缀、输入输出长度和词表分布保持一致，但不是逐条完全相同输入的消融实验。该轮稳态窗口为 89.38s，未达到最大 E2EL 三倍判据；性能表使用全程 AISBench 结果，Running 列使用同窗口采样。
 
 原始结果：[32 档完整汇总](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c64-n256-r1/result-summary.json)、[实际命中率](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c64-n256-r1/observed-prefix.json)、[同窗口 Running](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c64-n256-r1/stable-wave01/steady-monitor.json)、[启动记录与健康检查](launch-records/3p1d-s32/)。
+
+### 按 KV 低于 95% 调整客户端并发
+
+服务配置保持 D `max-num-seqs=32`、`HCCL_BUFFSIZE=1088`，仅调整客户端并发。两组仍为 256 请求、131072/1024 tokens、90% 固定文本前缀，实测命中率均为 87.5007%。所有吞吐取 AISBench 全程值，单卡分母为 P+D 共 64 卡。
+
+| 指标 | 20 并发 | 24 并发，当前采用 |
+|---|---:|---:|
+| 实测最大并发 / 平均并发 | 20 / 19.3924 | 24 / 22.9104 |
+| 成功 / 失败 | 256 / 0 | 256 / 0 |
+| D0 / D1 KV 采样峰值 | 75.5023% / 75.5193% | 90.6067% / 90.6164% |
+| D0 / D1 Running 峰值 | 10 / 10 | 12 / 12 |
+| D0 / D1 稳态平均 Running | 8.146 / 8.124 | 9.915 / 9.897 |
+| TTFT Avg，ms | 2802.0 | 2863.2 |
+| TPOT Avg，ms | 10.5 | 11.3 |
+| 单卡输入吞吐，tokens/s/卡 | 2935.7236 | 3258.5208 |
+| 单卡输出吞吐，tokens/s/卡 | 22.9353 | 25.4572 |
+| 单卡端到端吞吐，tokens/s/卡 | 2958.6590 | 3283.9780 |
+| QPS，整组 req/s | 1.4335 | 1.5911 |
+| 整组输出吞吐，tokens/s | 1467.8618 | 1629.2604 |
+| D 抢占计数增量，两个 DP | 0 / 0 | 0 / 0 |
+| 每请求抢占次数累计增量，两个 DP | 0 / 0 | 0 / 0 |
+| 返 P 重算日志匹配数 | 0 | 0 |
+
+每 0.5 秒采集 KV 使用率、抢占计数及请求统计。KV 达到 95% 或检测到抢占时，停止本轮 AISBench 客户端进程组；这两组均未触发保护，且逐条 token 数与 D 侧计数一致。24 并发的实测 KV 峰值低于 95%，因此选用该档。两个稳态窗口均通过最大 E2EL 三倍的时长判据。
+
+上一轮 64 并发的高 KV 占用不等于已经发生重算：本次 20 并发测试开始前，两台 D 自启动以来的 `num_preemptions_total` 和 `request_num_preemptions_sum` 均为 0，上一轮日志也没有返 P 重算消息。这里通过降低并发给 KV 留出余量。
+
+两台 D 的启动参数均为 `--no-enable-prefix-caching`，运行时 `cache_config_info` 中 `enable_prefix_caching=False`，本地 prefix queries/hits 均为 0。`External prefix cache` 统计从 P 获取的 KV，和 D 本地 prefix caching 分开。见 [运行时核对](launch-records/3p1d-s32/3p1d-r18-prefix-caching-check.json)。
+
+结果与验收证据：[20 并发结果](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c20-n256-kv95-r1/result-summary.json)、[24 并发结果](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/result-summary.json)、[24 并发 KV / 抢占 / 重算核验](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/kv-preemption-validation.json)、[测试后健康检查](launch-records/3p1d-s32/3p1d-after-kv95-health.json)。后缀 index 起点分别为 3000、4000，用于避免先前完整输入的缓存影响；共同前缀和输入输出长度保持一致。

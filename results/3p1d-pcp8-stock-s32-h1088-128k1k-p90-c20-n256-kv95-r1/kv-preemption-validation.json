@@ -1,0 +1,27 @@
+{
+  "kv_usage_limit": 0.95,
+  "sample_interval_seconds": 0.5,
+  "guard_events": [],
+  "per_dp": [
+    {
+      "node": 23,
+      "rank": 0,
+      "samples": 435,
+      "kv_usage_peak": 0.755022508902775,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 24,
+      "rank": 1,
+      "samples": 435,
+      "kv_usage_peak": 0.7551925791490219,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    }
+  ],
+  "recompute_log_matches": [],
+  "passed": true
+}
