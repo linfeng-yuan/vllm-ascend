@@ -1,0 +1,43 @@
+{
+  "topology": "2P1D: 32P + 32D",
+  "hardware_cards": 64,
+  "p_pairs": [
+    [
+      21,
+      22
+    ],
+    [
+      23,
+      24
+    ]
+  ],
+  "d_nodes": [
+    25,
+    26,
+    27,
+    28
+  ],
+  "d_parallel": "DP32/EP32",
+  "d_max_num_seqs": 32,
+  "d_max_num_batched_tokens": 512,
+  "d_hccl_buffsize": 1088,
+  "p_prefix_caching": true,
+  "d_prefix_caching": false,
+  "input_tokens": 131072,
+  "output_tokens": 1024,
+  "concurrency_limit": 64,
+  "data_num": 256,
+  "request_rate": 3.2,
+  "burstiness": 0,
+  "nominal_prefix_fraction": 0.9,
+  "expected_observed_prefix_fraction": 0.875,
+  "p_service_tag": "dp32-p-prefixon-128k1k-r23",
+  "d_service_tag": "dp32-noprefix-s32-h1088-rate14-r22",
+  "case": "dp32-128k1k-p90-c64-n256-qps3p2-r1",
+  "request_index_start": 8000,
+  "validated": true,
+  "observed_prefix_fraction": 0.875006675771147,
+  "actual_client_peak_inflight": 38,
+  "actual_proxy_peak_inflight": 37,
+  "actual_send_rate": 3.200017637387418
+}

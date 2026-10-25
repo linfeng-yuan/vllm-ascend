@@ -1,0 +1,21 @@
+{
+  "started": 1792944907.7928257,
+  "ended": 1792945032.5995917,
+  "returncode": 0,
+  "command": [
+    "ais_bench",
+    "/workspace/experiment/benchmarks/dp32-128k1k-p90-c64-n256-qps3p2-r1/config.py",
+    "--mode",
+    "perf",
+    "--work-dir",
+    "/workspace/experiment/benchmarks/dp32-128k1k-p90-c64-n256-qps3p2-r1/output",
+    "--num-prompts",
+    "256",
+    "--num-warmups",
+    "0",
+    "--debug"
+  ],
+  "concurrency": 64,
+  "data_num": 256,
+  "request_rate": 3.2
+}

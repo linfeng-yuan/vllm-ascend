@@ -2,6 +2,8 @@
 
 最新完成 **4K/2K、DP32/EP32、匀速 14 QPS** 复测：512 并发上限、3084 请求，TTFT **1460.3ms**、TPOT **10.2ms**，整体输出 **24513.4284 tokens/s**。实测客户端在途峰值 329，全部请求成功。配置见 [14 QPS 工作点](profiles/dp32-4k2k-rate14.json)，完整结果见本页最后一节。
 
+**128K/1K、DP32/EP32、90% 文本前缀、RR=3.2** 也已完成：64 并发上限、256 请求，实际命中 **87.5007%**，TTFT **3740.9ms**、TPOT **6.5ms**，整体输出 **2884.6416 tokens/s**。D 和 Proxy 保留，只重启 P 开启缓存。配置见 [128K 工作点](profiles/dp32-128k1k-p90-rate3p2.json)，详细结果见本页最后一节。
+
 2026-10-25，Ascend 950DT。保存 4K 输入 / 2K 输出的两种 D 并行配置复测，以及 128K 输入 / 1K 输出的 3P1D prefix 测试结果和启动条件。
 
 两组使用相同 r35 镜像、原镜像内 vLLM / vLLM-Ascend 代码和算子、同一模型权重，没有叠加 MC2 容量修改。完整环境和参数见 [测试条件](CONDITIONS.md)，逐个进程的实际参数见 [启动记录](launch-records/)，按节点整理的命令见 [启动脚本](launch/)。
@@ -231,3 +233,39 @@ TTFT 从 41.08 秒降到 1.46 秒。两个 P 的平均排队分别为 **26.9ms�
 测试工具曾在 `burstiness=0` 下触发除零错误，首个尝试没有发送正式请求。修复仅应用于独立 AISBench 工具副本，镜像原文件保持不变；见 [限速补丁](tools/aisbench-rate14.patch) 和 [源码 SHA256](launch-records/dp32-rate14/aisbench-pacing-fix.json)。随后按要求将 960/5760 调整为 512/3084，先排空旧轮，完整结果只使用本轮。
 
 结果与条件：[AISBench 全程汇总](results/dp32-4k2k-c512-n3084-qps14-r3/result-summary.json)、[P 吞吐与排队](results/dp32-4k2k-c512-n3084-qps14-r3/prefill-throughput.json)、[KV / 抢占验收](results/dp32-4k2k-c512-n3084-qps14-r3/kv-preemption-validation.json)、[启动参数和健康检查](launch-records/dp32-rate14/)、[测试条件](CONDITIONS.md#4k2kdp32ep32限速复测)。
+
+## 128K/1K：DP32/EP32，90% 前缀，RR=3.2
+
+保留上一组的 D DP32/EP32 和 Proxy，仅重启两组 P 开启 prefix caching。P 仍为 21/22、23/24 的 PP2/PCP8/EP8，共 32 卡；D 在 25～28，共 32 卡。全部单卡吞吐除以 P+D **64 卡**。32 个 D API 的 PID、启动时间和启动参数前后一致，D 本地 prefix caching 继续关闭。
+
+| 指标 | 实测结果 |
+|---|---:|
+| 客户端并发上限 / 请求数 | 64 / 256 |
+| 成功 / 失败 | 256 / 0 |
+| 输入 / 输出 tokens，每条 | 131072 / 1024 |
+| 文本前缀比例 / 实测缓存命中率 | 90% / 87.5007% |
+| 配置 RR / 实测发送速率，req/s | 3.2 / 3.2000 |
+| AISBench 平均并发 | 29.3494 |
+| 客户端实测在途峰值 / Proxy 峰值 | 38 / 37 |
+| TTFT Avg，ms | 3740.9 |
+| TTFT P50 / P75 / P90，ms | 3726.8 / 4036.0 / 4289.0 |
+| TPOT Avg，ms | 6.5 |
+| TPOT P50 / P75 / P90，ms | 6.2 / 6.3 / 6.8 |
+| 单卡输入吞吐，tokens/s/卡 | 5769.2833 |
+| 单卡输出吞吐，tokens/s/卡 | 45.0725 |
+| 单卡端到端吞吐，tokens/s/卡 | 5814.3558 |
+| QPS，AISBench 全程完成吞吐 | 2.8170 |
+| 整组输出吞吐，tokens/s | 2884.6416 |
+| AISBench 全程时长，s | 90.8758 |
+
+输入吞吐包含命中缓存的 tokens。发压中段取首条发出 20 秒后至末条发出，共 59.69 秒，仅用于观察后端负载，不作为 AISBench 原生稳态性能结果。该窗口 D 平均 Running 合计 **22.151**，约 **0.692/DP**，峰值合计 **26**。客户端没有达到配置的 64 并发上限。
+
+正式请求分布在 **29/32 个 D DP**，DP29、DP30、DP31 没有承接正式请求；各 DP 成功请求为 0～12 条。所有 32 个 DP 都有健康检查和有效采样，报告保留这次低负载下的不均衡，不把名义 DP32 当作全部 DP 均有请求。当前 Proxy 按在途负载选路，并列负载按固定顺序选择，这与较低编号 DP 更常承接请求的现象相符。
+
+两组 P 各完成 128 条请求。P 自身平均处理时间为 2857.3ms、2816.2ms，其中平均排队 933.1ms、895.7ms；中段平均 Running 均为 2，平均 Waiting 为 1.824、1.790。两 P 全程未缓存输入处理速率合计为 46151.45 tokens/s。
+
+正式测试前用独立输入分别验证两个 P：每次输入 131072 tokens、输出 1 token，prefix queries 增量 131072、hits 增量 114688，命中率均为 87.5%。探针与正式数据后缀不同，预热和探针均排除在正式计数之外。正式测试按 P metrics 增量得到 87.5007%，D 成功计数增量 256、生成 token 增量 262144，逐条长度全部吻合。没有抢占或返 P 重算，D KV 采样峰值约 3.37%。
+
+末条请求发出后继续响应 11.1887 秒，因此发送速率 3.2 与 AISBench 全程完成 QPS 2.817 分开报告。
+
+证据：[AISBench 汇总](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/result-summary.json)、[独立缓存命中探针](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/prefix-probe.json)、[正式命中率](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/observed-prefix.json)、[逐 DP 负载](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/paced-monitor.json)、[P 吞吐与排队](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/prefill-throughput.json)、[KV / 抢占验收](results/dp32-128k1k-p90-c64-n256-qps3p2-r1/kv-preemption-validation.json)、[P 启动与 D 进程保持记录](launch-records/dp32-prefix-rate3p2/)。

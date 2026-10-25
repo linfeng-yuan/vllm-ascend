@@ -177,6 +177,7 @@ def main():
     parser.add_argument('--input-len', type=int, required=True)
     parser.add_argument('--output-len', type=int, required=True)
     parser.add_argument('--prefix-fraction', type=float, default=0)
+    parser.add_argument('--expected-prefix-hit', type=float)
     parser.add_argument('--service-tag', required=True)
     parser.add_argument('--p-service-tag')
     parser.add_argument('--fresh-prefix-without-reset', action='store_true')
@@ -248,6 +249,22 @@ def main():
             warms.append(dict(target, response=response))
             assert response['usage']['prompt_tokens'] == metadata['prefix_tokens'], response.get('usage')
         (case / 'warmup.json').write_text(json.dumps(warms, indent=2))
+        if a.expected_prefix_hit is not None:
+            probe=case/'prefix-probe';probe.mkdir()
+            probe_text,_,probe_meta=make_data(probe,1,a.input_len,1,a.prefix_fraction,a.request_index_start+count+1000000)
+            probe_before=snapshot(case/'prefix-probe-before.json',ps)
+            evidence=[]
+            for target in ps:
+                response=json.loads(http(target['url']+'/v1/completions',{'model':MODEL_NAME,'prompt':probe_text,'max_tokens':1,'ignore_eos':True,'add_special_tokens':False,'temperature':0},timeout=1200))
+                assert response['usage']['prompt_tokens']==a.input_len and response['usage']['completion_tokens']==1
+                evidence.append(dict(target,usage=response['usage']))
+            probe_after=snapshot(case/'prefix-probe-after.json',ps)
+            for item,b,e in zip(evidence,probe_before,probe_after):
+                q=e['values']['prefix_cache_queries_total']-b['values']['prefix_cache_queries_total']
+                h=e['values']['prefix_cache_hits_total']-b['values']['prefix_cache_hits_total']
+                item.update(queries_delta=q,hits_delta=h,observed_fraction=h/q if q else None)
+                assert q>0 and abs(h/q-a.expected_prefix_hit)<.001,item
+            (case/'prefix-probe.json').write_text(json.dumps(dict(expected=a.expected_prefix_hit,probe_dataset=probe_meta,per_p=evidence),indent=2))
     before = snapshot(case / 'before.json', ps + ds)
     assert sum(s['values']['num_requests_running'] + s['values']['num_requests_waiting'] for s in before) == 0
     logdir = ROOT / 'logs' / a.service_tag

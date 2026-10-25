@@ -1,0 +1,31 @@
+{
+  "phase": "complete",
+  "time": 1792945047.4755788,
+  "p_service_tag": "dp32-p-prefixon-128k1k-r23",
+  "d_service_tag": "dp32-noprefix-s32-h1088-rate14-r22",
+  "case": "dp32-128k1k-p90-c64-n256-qps3p2-r1",
+  "concurrency": 64,
+  "data_num": 256,
+  "request_rate": 3.2,
+  "burstiness": 0,
+  "input_tokens": 131072,
+  "output_tokens": 1024,
+  "nominal_prefix_fraction": 0.9,
+  "expected_block_aligned_hit_fraction": 0.875,
+  "p_nodes": [
+    21,
+    22,
+    23,
+    24
+  ],
+  "d_nodes": [
+    25,
+    26,
+    27,
+    28
+  ],
+  "hardware_cards": 64,
+  "d_unchanged": true,
+  "proxy_unchanged": true,
+  "observed_prefix_fraction": 0.875006675771147
+}

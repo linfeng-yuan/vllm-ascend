@@ -184,3 +184,13 @@ P 的实际负载吞吐另用正式窗口前后 `Δprefix_cache_queries_total �
 原 960/5760 限速尝试按后续要求中止并排空，在同一批后端上改为 512/3084。失败的零请求尝试和中止轮都不纳入正式性能结果。正式轮每秒采集全部 P/D 和 Proxy，按独立日志偏移保存 D 日志，结束后继续采集 12 秒。
 
 客户端时间戳从 AISBench 原始 SQLite time_points 数组读取，重建实际发送速率和在途请求；其首个时间点是请求开始，后续时间点为收到的响应块。TTFT 重算值与 AISBench 汇总一致。限速负载没有达到配置上限，原生稳态选择器无法找到 512 并发的窗口；使用全程 AISBench 性能，并另行记录从首发后 30 秒到末发之间的 Running/Waiting。该监控窗口不称为 AISBench 稳态。
+
+## 128K/1K：DP32/EP32，RR=3.2
+
+case 为 `dp32-128k1k-p90-c64-n256-qps3p2-r1`。D 和 Proxy 沿用上一组：D DP32/EP32、max-num-seqs=32、max-num-batched-tokens=512、max-model-len=1048576、HCCL_BUFFSIZE=1088、本地 prefix caching 关闭，其余参数不变。保存全部 32 个 D API 的 PID、启动时间和命令，重启 P 前后逐项一致。
+
+经确认只重启 21～24 的本实验 P 进程树，开启 P prefix caching；不重启容器，21 上的 Proxy 保持运行。P 其余参数与旧轮相同，两个实例仍为 PP2/PCP8/EP8。实际 P 命令保存在 `launch-records/dp32-prefix-rate3p2/`，D 命令继续使用 `launch-records/dp32-rate14/` 中的记录。
+
+AISBench 上限 64 并发、256 请求，request_rate=3.2、burstiness=0；使用已记录的独立限速工具副本。每条输入 131072、输出 1024 tokens，共同前缀 117952 tokens，实际缓存命中部分为 114688 tokens。正式数据后缀 index 起点 8000；探针使用 1008256，避免探针的完整输入被正式请求复用。两组 P 各预热共同前缀并执行一次独立完整输入探针，命中 87.5% 后才开始正式计数。
+
+每 0.5 秒采集两个 P、全部 32 个 D 和 Proxy；D KV 达到 95% 或发生抢占即停止客户端。本轮未触发保护。全程 AISBench 数值为主结果；另用首发后 20 秒至末发的窗口观察 DP 负载。按实际逐 DP 成功计数报告，保留低负载下 DP29～31 未承接正式请求的事实。

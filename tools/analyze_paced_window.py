@@ -1,5 +1,6 @@
 """Measure actual arrivals and Running during sustained sending, without claiming an AISBench stable stage."""
 import collections
+import argparse
 import io
 import json
 from pathlib import Path
@@ -10,7 +11,13 @@ import time
 
 import numpy as np
 
-case=Path(sys.argv[1])
+parser=argparse.ArgumentParser()
+parser.add_argument('case')
+parser.add_argument('--warmup-seconds',type=float,default=30)
+args=parser.parse_args()
+case=Path(args.case)
+metadata=json.loads((case/'dataset.json').read_text())
+measurement=json.loads((case/'window.json').read_text())
 path=next(case.glob('output/*/performances/pro0813/pro0813-case_details.jsonl'))
 connections={}
 starts=[]
@@ -31,7 +38,7 @@ active=peak=0
 for _,change in events:active+=change;peak=max(peak,active)
 assert active==0
 offset=time.time()-time.perf_counter()
-start=first+30+offset
+start=first+args.warmup_seconds+offset
 end=last+offset
 assert start<end
 rows=[json.loads(s) for s in (case/'samples.jsonl').open()]
@@ -49,11 +56,11 @@ for z in chosen:
     if z['role']=='D':ticks[z['tick']].append(z)
 totals=[sum(z['values']['num_requests_running'] for z in zs) for zs in ticks.values() if len(zs)==32]
 assert len([z for z in per if z['role']=='D'])==32 and totals
-result=dict(scope='sustained sending window: first request start + 30 seconds through last request start; not an AISBench stable stage',
+result=dict(scope='sustained sending window: first request start + %g seconds through last request start; not an AISBench stable stage'%args.warmup_seconds,
             window_start_unix_estimate=start,window_end_unix_estimate=end,window_duration_seconds=end-start,
             clock_alignment='client request perf_counter and metrics collected on the same node22 kernel',
-            aisbench_stable_stage_available=False,aisbench_stable_stage_reason='Configured concurrency 512 was not reached by paced traffic; stock WAVE_OFFSET=.1 selector found no stable stage',
-            configured_concurrency_limit=512,configured_request_rate=14,requests=len(starts),actual_client_peak_inflight=peak,
+            aisbench_stable_stage_available=False,aisbench_stable_stage_reason='Paced traffic is reported using native full-test statistics; this separately labelled monitor window is not an AISBench stable stage',
+            configured_concurrency_limit=measurement['concurrency'],configured_request_rate=metadata['request_rate'],requests=len(starts),actual_client_peak_inflight=peak,
             first_request_start_perf_counter=first,last_request_start_perf_counter=last,last_response_perf_counter=final,
             first_to_last_send_seconds=last-first,actual_send_rate=(len(starts)-1)/(last-first),
             response_tail_after_last_send_seconds=final-last,measurement_duration_seconds=final-first,

@@ -1,0 +1,52 @@
+{
+  "case": "dp32-128k1k-p90-c64-n256-qps3p2-r1",
+  "benchmark_duration_seconds": 90.8757593,
+  "window_source": "paced-monitor.json",
+  "window_is_aisbench_steady": false,
+  "scope": "P metrics deltas over the PD test; elapsed AISBench measurement duration, excluding prefix warmup",
+  "capacity_limit_measured": false,
+  "uncached_tokens_definition": "With prefix queries: delta(queries)-delta(hits). Without local prefix caching: successful P requests times fixed input length. See per-P uncached_tokens_method.",
+  "total_successful_requests": 256.0,
+  "total_uncached_query_tokens_per_second": 46151.44932274585,
+  "total_query_tokens_per_second": 369231.31381197716,
+  "steady_window_start": 1792944953.8398647,
+  "steady_window_end": 1792945013.5269256,
+  "per_p": [
+    {
+      "node": 21,
+      "successful_requests": 128.0,
+      "query_tokens": 16777088.0,
+      "hit_tokens": 14680064.0,
+      "uncached_query_tokens": 2097024.0,
+      "uncached_tokens_method": "delta(prefix_cache_queries_total) minus delta(prefix_cache_hits_total)",
+      "query_tokens_per_second": 184615.65690598858,
+      "uncached_query_tokens_per_second": 23075.724661372926,
+      "request_throughput": 1.4085164293092185,
+      "p_request_ttft_avg_ms": 2857.3229797184467,
+      "p_queue_avg_ms": 933.1373405257182,
+      "steady_samples": 119,
+      "steady_running_mean": 2.0,
+      "steady_running_peak": 2.0,
+      "steady_waiting_mean": 1.8235294117647058,
+      "steady_waiting_peak": 3.0
+    },
+    {
+      "node": 23,
+      "successful_requests": 128.0,
+      "query_tokens": 16777088.0,
+      "hit_tokens": 14680064.0,
+      "uncached_query_tokens": 2097024.0,
+      "uncached_tokens_method": "delta(prefix_cache_queries_total) minus delta(prefix_cache_hits_total)",
+      "query_tokens_per_second": 184615.65690598858,
+      "uncached_query_tokens_per_second": 23075.724661372926,
+      "request_throughput": 1.4085164293092185,
+      "p_request_ttft_avg_ms": 2816.2035327404737,
+      "p_queue_avg_ms": 895.6828716109158,
+      "steady_samples": 119,
+      "steady_running_mean": 2.0,
+      "steady_running_peak": 2.0,
+      "steady_waiting_mean": 1.7899159663865547,
+      "steady_waiting_peak": 3.0
+    }
+  ]
+}

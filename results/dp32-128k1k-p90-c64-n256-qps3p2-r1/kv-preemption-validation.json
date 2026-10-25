@@ -1,0 +1,330 @@
+{
+  "kv_usage_limit": 0.95,
+  "max_running_per_dp": null,
+  "sample_interval_seconds": 0.5,
+  "guard_events": [],
+  "per_dp": [
+    {
+      "node": 25,
+      "rank": 0,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033649826824316276,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 1,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033654851136261876,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 2,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033658871666218726,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 3,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365987694880834,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 4,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365987694880834,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 5,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365987694880834,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 6,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033653846153846145,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 25,
+      "rank": 7,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033649826824316276,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 8,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033649826824316276,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 9,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033654851136261876,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 10,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365987694880834,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 11,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033660882291448924,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 12,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.0336618876941458,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 13,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365987694880834,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 14,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033624988801624456,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 26,
+      "rank": 15,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033649826824316276,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 16,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033649826824316276,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 17,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03365585617870159,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 18,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033660882291448924,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 19,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033660882291448924,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 20,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03368873756831825,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 21,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03363001015471001,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 22,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033656861281170625,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 27,
+      "rank": 23,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03364882214194009,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 24,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03364882214194009,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 25,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.033656861281170625,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 26,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03360215053763438,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 27,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03363001015471001,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 28,
+      "samples": 274,
+      "running_peak": 1.0,
+      "kv_usage_peak": 0.03363101460529849,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 29,
+      "samples": 274,
+      "running_peak": 0.0,
+      "kv_usage_peak": 0.0,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 30,
+      "samples": 274,
+      "running_peak": 0.0,
+      "kv_usage_peak": 0.0,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    },
+    {
+      "node": 28,
+      "rank": 31,
+      "samples": 274,
+      "running_peak": 0.0,
+      "kv_usage_peak": 0.0,
+      "preemptions_delta": 0.0,
+      "request_preemptions_sum_delta": 0.0,
+      "kv_preemption_metrics_present": true
+    }
+  ],
+  "recompute_log_matches": [],
+  "passed": true
+}

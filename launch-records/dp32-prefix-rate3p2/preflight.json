@@ -1,0 +1,115 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "rank": 0,
+    "url": "http://197.33.45.1:18100",
+    "elapsed": 9.107370138168335,
+    "response": {
+      "id": "cmpl-98ee642ac020fa33",
+      "object": "text_completion",
+      "created": 1792944884,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "P",
+    "node": 23,
+    "rank": 1,
+    "url": "http://197.33.47.1:18100",
+    "elapsed": 9.109893798828125,
+    "response": {
+      "id": "cmpl-b471a66094ab09ef",
+      "object": "text_completion",
+      "created": 1792944885,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "Proxy",
+    "elapsed": 1.248772382736206,
+    "response": {
+      "id": "cmpl-7a70f8f6-b0d7-458e-abd1-884a5f4fed05",
+      "object": "text_completion",
+      "created": 1792944886,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " Avi Avi Avi Avi Avi Avi Avi Avi",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-dp32-ep-405d5225",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4112,
+        "completion_tokens": 16,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  }
+]
