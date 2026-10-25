@@ -1,0 +1,48 @@
+{
+  "case": "2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1",
+  "benchmark_duration_seconds": 181.6273793,
+  "scope": "P metrics deltas over the PD test; elapsed AISBench measurement duration, excluding prefix warmup",
+  "capacity_limit_measured": false,
+  "uncached_tokens_definition": "delta(prefix_cache_queries_total) minus delta(prefix_cache_hits_total); not cached-inclusive AISBench input tokens",
+  "total_successful_requests": 256.0,
+  "total_uncached_query_tokens_per_second": 23091.4965362824,
+  "total_query_tokens_per_second": 184741.83864414762,
+  "steady_window_start": 1792940996.8206117,
+  "steady_window_end": 1792941148.9128127,
+  "per_p": [
+    {
+      "node": 21,
+      "successful_requests": 130.0,
+      "query_tokens": 17039230.0,
+      "hit_tokens": 14909440.0,
+      "uncached_query_tokens": 2129790.0,
+      "query_tokens_per_second": 93814.21493648122,
+      "uncached_query_tokens_per_second": 11726.150584830908,
+      "request_throughput": 0.7157511191375759,
+      "p_request_ttft_avg_ms": 2199.2829377834614,
+      "p_queue_avg_ms": 443.0999437884356,
+      "steady_samples": 304,
+      "steady_running_mean": 0.8388157894736842,
+      "steady_running_peak": 2.0,
+      "steady_waiting_mean": 0.21052631578947367,
+      "steady_waiting_peak": 5.0
+    },
+    {
+      "node": 25,
+      "successful_requests": 126.0,
+      "query_tokens": 16514946.0,
+      "hit_tokens": 14450688.0,
+      "uncached_query_tokens": 2064258.0,
+      "query_tokens_per_second": 90927.62370766641,
+      "uncached_query_tokens_per_second": 11365.345951451494,
+      "request_throughput": 0.6937280077794967,
+      "p_request_ttft_avg_ms": 2128.6074244786823,
+      "p_queue_avg_ms": 388.5037718185534,
+      "steady_samples": 304,
+      "steady_running_mean": 0.7894736842105263,
+      "steady_running_peak": 2.0,
+      "steady_waiting_mean": 0.15460526315789475,
+      "steady_waiting_peak": 3.0
+    }
+  ]
+}

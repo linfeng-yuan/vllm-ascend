@@ -1,0 +1,13 @@
+PID                 PPID                COMMAND
+1326395             1326372             sleep infinity
+1326954             1326372             python /workspace/experiment/scripts/launch_service.py --node 28 --topology pcp8-3p-remap --prefix on --max-seqs 64 --hccl 320 --tag 3p1d-pcp8-prefix-mc2local-h320-r14
+1326966             1326954             /usr/local/python3.12.13/bin/python3 /usr/local/python3.12.13/bin/vllm serve /models/DeepSeek-V4-Pro-0813 --host 0.0.0.0 --served-model-name dsv4-pro-0813 --tensor-parallel-size 1 --enable-expert-parallel --seed 1024 --max-model-len 1048576 --no-disable-hybrid-kv-cache-manager --model-loader-extra-config {"enable_multithread_load":true,"num_threads":128} --trust-remote-code --block-size 32 --kv-cache-dtype fp8 --attention_config.indexer_kv_dtype fp8 --tokenizer-mode deepseek_v4 --tool-call-parser deepseek_v4 --enable-auto-tool-choice --reasoning-parser deepseek_v4 --port 18100 --nnodes 2 --node-rank 1 --master-addr 197.33.51.1 --master-port 18500 --prefill-context-parallel-size 8 --data-parallel-size 1 --pipeline-parallel-size 2 --max-num-batched-tokens 8192 --max-num-seqs 16 --gpu-memory-utilization 0.94 --enforce-eager --enable-prefix-caching --speculative-config {"num_speculative_tokens":5,"method":"dspark","enforce_eager":true} --headless --additional-config {"enable_cpu_binding": true, "enable_fused_mc2": 0, "multistream_overlap_shared_expert": true, "enable_shared_expert_dp": true} --kv-transfer-config {"kv_connector": "MooncakeConnectorV2", "kv_role": "kv_producer", "kv_port": "40400", "kv_connector_extra_config": {"prefill": {"dp_size": 1, "tp_size": 1, "pp_size": 2, "pp_layer_partition": "32,29", "pcp_size": 8}, "decode": {"dp_size": 2, "tp_size": 1, "pcp_size": 8}}}
+1327024             1326966             /usr/local/python3.12.13/bin/python3 -c from multiprocessing.resource_tracker import main;main(12)
+1327025             1326966             VLLM::Worker_PP1_PCP0_EP0
+1327026             1326966             VLLM::Worker_PP1_PCP1_EP1
+1327027             1326966             VLLM::Worker_PP1_PCP2_EP2
+1327028             1326966             VLLM::Worker_PP1_PCP3_EP3
+1327029             1326966             VLLM::Worker_PP1_PCP4_EP4
+1327030             1326966             VLLM::Worker_PP1_PCP5_EP5
+1327031             1326966             VLLM::Worker_PP1_PCP6_EP6
+1327032             1326966             VLLM::Worker_PP1_PCP7_EP7

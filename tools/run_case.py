@@ -29,8 +29,8 @@ def http(url, data=None, timeout=20):
 
 
 def endpoints(topology):
-    if topology == 'pcp8-3p-remap':
-        return ([{'role': 'P', 'node': n, 'rank': i, 'url': 'http://197.33.%d.1:18100' % (n+24)} for i,n in enumerate([21,25,27])],
+    if topology in ['pcp8-3p-remap', 'pcp8-2p-remap']:
+        return ([{'role': 'P', 'node': n, 'rank': i, 'url': 'http://197.33.%d.1:18100' % (n+24)} for i,n in enumerate([21,25] if topology == 'pcp8-2p-remap' else [21,25,27])],
                 [{'role': 'D', 'node': n, 'rank': n-23, 'url': 'http://197.33.%d.1:18200' % (n+24)} for n in [23,24]])
     if topology == 'pcp8-1p':
         return ([{'role': 'P', 'node': 21, 'rank': 0, 'url': 'http://197.33.45.1:18100'}],
@@ -162,11 +162,12 @@ def summarize_monitor(case, ds, before, after):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--topology', choices=['dp32', 'pcp8', 'pcp8-1p', 'pcp8-3p-remap'], required=True)
+    parser.add_argument('--topology', choices=['dp32', 'pcp8', 'pcp8-1p', 'pcp8-3p-remap', 'pcp8-2p-remap'], required=True)
     parser.add_argument('--concurrency', type=int, required=True)
     parser.add_argument('--data-num', type=int)
     parser.add_argument('--request-index-start', type=int, default=0)
     parser.add_argument('--kv-usage-limit', type=float)
+    parser.add_argument('--max-running-per-dp', type=int)
     parser.add_argument('--sample-interval', type=float, default=1)
     parser.add_argument('--input-len', type=int, required=True)
     parser.add_argument('--output-len', type=int, required=True)
@@ -184,7 +185,8 @@ def main():
     count = a.data_num if a.data_num is not None else 6 * a.concurrency
     assert count > 0 and a.request_index_start >= 0
     first, prefix, metadata = make_data(case, count, a.input_len, a.output_len, a.prefix_fraction, a.request_index_start)
-    metadata['hardware_cards'] = 32 if a.topology == 'pcp8-1p' else 64
+    metadata['hardware_cards'] = 32 if a.topology == 'pcp8-1p' else 48 if a.topology == 'pcp8-2p-remap' else 64
+    metadata['max_running_per_dp'] = a.max_running_per_dp
     metadata['topology'] = a.topology
     metadata['p_service_tag'] = a.p_service_tag or a.service_tag
     (case / 'dataset.json').write_text(json.dumps(metadata, indent=2))
@@ -262,6 +264,9 @@ def main():
                 for row in pool.map(metric, ps + ds):
                     row['tick'] = tick
                     stream.write(json.dumps(row) + '\n')
+                    if a.max_running_per_dp is not None and row.get('role')=='D' and 'error' not in row:
+                        if 'num_requests_running' not in row.get('metrics_present',[]) or row['values']['num_requests_running']>a.max_running_per_dp:
+                            abort_client(dict(reason='D running limit',limit=a.max_running_per_dp,sample=row))
                     if a.kv_usage_limit is not None and row.get('role')=='D' and 'error' not in row:
                         v=row['values'];baseline=next(z['values'] for z in before if z['role']=='D' and z['rank']==row['rank'])
                         if not set(['kv_cache_usage_perc','num_preemptions_total','request_num_preemptions_sum']) <= set(row.get('metrics_present',[])):
@@ -309,8 +314,8 @@ def main():
         for line in p.read_text(errors='replace').splitlines():
             if re.search(r'sending.*request back to P for recomputation|KV offload.*(?:unavailable|failed|raised)|preempted.*(?:recompute|RECOMPUTE)',line,re.I):
                 recompute_matches.append(dict(log=p.name,line=line))
-    validation={'kv_usage_limit':a.kv_usage_limit,'sample_interval_seconds':a.sample_interval,'guard_events':guard_events,'per_dp':[{k:v for k,v in z.items() if k in ['rank','node','samples','kv_usage_peak','preemptions_delta','request_preemptions_sum_delta','kv_preemption_metrics_present']} for z in summary['per_dp']],'recompute_log_matches':recompute_matches}
-    validation['passed']=not guard_events and not recompute_matches and all(z['kv_preemption_metrics_present'] and z['preemptions_delta']==0 and z['request_preemptions_sum_delta']==0 and (a.kv_usage_limit is None or z['kv_usage_peak']<a.kv_usage_limit) for z in summary['per_dp'])
+    validation={'kv_usage_limit':a.kv_usage_limit,'max_running_per_dp':a.max_running_per_dp,'sample_interval_seconds':a.sample_interval,'guard_events':guard_events,'per_dp':[{k:v for k,v in z.items() if k in ['rank','node','samples','running_peak','kv_usage_peak','preemptions_delta','request_preemptions_sum_delta','kv_preemption_metrics_present']} for z in summary['per_dp']],'recompute_log_matches':recompute_matches}
+    validation['passed']=not guard_events and not recompute_matches and all(z['kv_preemption_metrics_present'] and z['preemptions_delta']==0 and z['request_preemptions_sum_delta']==0 and (a.kv_usage_limit is None or z['kv_usage_peak']<a.kv_usage_limit) and (a.max_running_per_dp is None or z['running_peak']<=a.max_running_per_dp) for z in summary['per_dp'])
     (case/'kv-preemption-validation.json').write_text(json.dumps(validation,indent=2))
     cache_before = sum(s['values']['prefix_cache_hits_total'] for s in before if s['role'] == 'P')
     cache_after = sum(s['values']['prefix_cache_hits_total'] for s in after if s['role'] == 'P')

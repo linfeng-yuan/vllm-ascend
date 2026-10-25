@@ -1,0 +1,69 @@
+{
+  "time": 1792940938.1076064,
+  "tag": "2p1d-pcp8-stock-s16-h1088-prefill-scale-r20",
+  "ready": 4,
+  "expected_endpoints": 4,
+  "kv_capacity_ranks": 2,
+  "d_total_logical_kv_tokens": 2039522,
+  "logs": [
+    {
+      "log": "node23-d-rank0.log",
+      "bytes": 152973,
+      "updated": 1792941089.870711,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1019998
+      ],
+      "kv_tokens": 1019998,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=100) INFO:     Waiting for application startup.",
+        "(APIServer pid=100) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node24-d-rank1.log",
+      "bytes": 139931,
+      "updated": 1792941090.2055,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1019524
+      ],
+      "kv_tokens": 1019524,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=100) INFO:     Waiting for application startup.",
+        "(APIServer pid=100) INFO:     Application startup complete."
+      ]
+    }
+  ],
+  "health": [
+    {
+      "node": 21,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 23,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 24,
+      "port": 18200,
+      "status": 200
+    }
+  ],
+  "phase": "ready"
+}

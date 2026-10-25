@@ -1,6 +1,6 @@
 # DeepSeek-V4-Pro-0813 PD 性能测试
 
-当前 KV 低于 95% 的已验证工作点为 **3P1D，AISBench 24 并发 / 256 请求**；D 保持 `max-num-seqs=32`、`HCCL_BUFFSIZE=1088`。两个 D 的 KV 采样峰值为 **90.61%、90.62%**，抢占增量为 0，日志没有返 P 重算。D 本地 prefix caching 关闭。参数见 [当前测试配置](profiles/3p1d-128k1k-p90-kv95.json)，完整结果见本页最后一节。
+最新完成 **2P1D，48 卡，AISBench 24 并发 / 256 请求**。D `max-num-seqs=16`，每 DP Running 峰值均为 12，KV 峰值为 **89.63%、89.59%**，没有抢占或返 P 重算。平均 TTFT **3306.2ms**、TPOT **12.6ms**，整体输出 **1443.3066 tokens/s**。配置见 [2P1D 工作点](profiles/2p1d-pcp8-128k1k-p90-kv95.json)，完整对比见本页最后一节。
 
 2026-10-25，Ascend 950DT。保存 4K 输入 / 2K 输出的两种 D 并行配置复测，以及 128K 输入 / 1K 输出的 3P1D prefix 测试结果和启动条件。
 
@@ -160,3 +160,42 @@ Running 使用 AISBench 稳态窗口内的同窗采样；上述延迟和 token �
 两台 D 的启动参数均为 `--no-enable-prefix-caching`，运行时 `cache_config_info` 中 `enable_prefix_caching=False`，本地 prefix queries/hits 均为 0。`External prefix cache` 统计从 P 获取的 KV，和 D 本地 prefix caching 分开。见 [运行时核对](launch-records/3p1d-s32/3p1d-r18-prefix-caching-check.json)。
 
 结果与验收证据：[20 并发结果](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c20-n256-kv95-r1/result-summary.json)、[24 并发结果](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/result-summary.json)、[24 并发 KV / 抢占 / 重算核验](results/3p1d-pcp8-stock-s32-h1088-128k1k-p90-c24-n256-kv95-r1/kv-preemption-validation.json)、[测试后健康检查](launch-records/3p1d-s32/3p1d-after-kv95-health.json)。后缀 index 起点分别为 3000、4000，用于避免先前完整输入的缓存影响；共同前缀和输入输出长度保持一致。
+
+## 128K/1K：2P1D，24 并发 / 256 请求
+
+P 保留 21/22、25/26 两组，D 使用 23/24。27/28 的本实验 P 容器已停止，NPU 无运行进程。本组共 **48 卡**：32P + 16D。P prefix caching 开启，D 本地 prefix caching 关闭，Proxy workers=4。D 按要求设置 `max-num-seqs=16`，HCCL_BUFFSIZE 仍为 1088，其他参数沿用原镜像配置。
+
+两列均为 131072 输入 / 1024 输出、90% 固定文本前缀，实际缓存命中率 87.5007%。延迟和吞吐以 AISBench 全程值为准；每卡吞吐除以各列实际使用的全部 P+D 卡数。
+
+| 指标 | 前一轮 3P1D | 本轮 2P1D |
+|---|---:|---:|
+| 总卡数 | 64 | 48 |
+| D max-num-seqs | 32 | 16 |
+| 最大并发 / 平均并发 | 24 / 22.9104 | 24 / 22.8802 |
+| 总请求数 / 成功 / 失败 | 256 / 256 / 0 | 256 / 256 / 0 |
+| TTFT Avg，ms | 2863.2 | 3306.2 |
+| TPOT Avg，ms | 11.3 | 12.6 |
+| 单卡输入吞吐，tokens/s/卡 | 3258.5208 | 3848.8177 |
+| 单卡输出吞吐，tokens/s/卡 | 25.4572 | 30.0689 |
+| 单卡端到端吞吐，tokens/s/卡 | 3283.9780 | 3878.8866 |
+| QPS，整组 req/s | 1.5911 | 1.4095 |
+| 整组输出吞吐，tokens/s | 1629.2604 | 1443.3066 |
+| D0 / D1 稳态平均 Running | 9.915 / 9.897 | 9.793 / 9.967 |
+| D0 / D1 Running 峰值 | 12 / 12 | 12 / 12 |
+| D0 / D1 KV 采样峰值 | 90.6067% / 90.6164% | 89.6277% / 89.5896% |
+| D 抢占 / 返 P 重算 | 0 / 0 | 0 / 0 |
+
+两个 P 能达到 D 每 DP Running=12，稳态平均 Running 合计 19.760，和前一轮的 19.813 接近。这里的 24 是峰值，不是全程维持值。本轮整体输出下降 11.4%，使用卡数减少 25%，按全部 P+D 卡数计算的单卡输出提高 18.1%。D 的 max-num-seqs 同时从 32 改为 16，因此不能把全部吞吐差异归因于少一组 P。
+
+P 的正式窗口 metrics 记录如下，处理速率只计未命中的 query tokens，已排除共同前缀预热；它不是 P 独立饱和上限。
+
+| P 实例 | 完成请求 | 未缓存输入 tokens/s | P 平均处理时间，ms | 其中排队，ms | 同窗口平均 Running / Waiting |
+|---|---:|---:|---:|---:|---:|
+| 21/22 | 130 | 11726.15 | 2199.3 | 443.1 | 0.839 / 0.211 |
+| 25/26 | 126 | 11365.35 | 2128.6 | 388.5 | 0.789 / 0.155 |
+
+两组 P 合计处理未缓存输入 23091.50 tokens/s；前一轮三个 P 合计为 26066.58 tokens/s。AISBench 的输入吞吐包含缓存命中的 tokens，和这一口径分开。P 平均处理时间取 P 自身 TTFT metrics，包含其队列时间，不等于客户端端到端 TTFT。
+
+本轮 AISBench 稳态窗口 152.09 秒，满足最大 E2EL 三倍时长判据；该窗口 TTFT 为 2977.0ms、TPOT 为 12.3ms、整体输出为 1561.9999 tokens/s。全程主结果仍使用上表。D 启动打印 KV 容量合计 **2039522 tokens**，两 DP 分别为 1019998、1019524。
+
+原始结果：[AISBench 全程结果](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/result-summary.json)、[同窗口 D Running](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/stable-wave01/steady-monitor.json)、[P 吞吐与排队](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/prefill-throughput.json)、[KV / Running / 抢占验收](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/kv-preemption-validation.json)、[启动记录与健康检查](launch-records/2p1d-pcp8/)、[启动脚本](launch/2p1d-pcp8/)。

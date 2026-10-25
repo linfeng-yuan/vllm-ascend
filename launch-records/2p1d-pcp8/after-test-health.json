@@ -1,0 +1,42 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "url": "http://197.33.45.1:18100/health",
+    "status": 200,
+    "body": "",
+    "time": 1792941223.2418196
+  },
+  {
+    "role": "P",
+    "node": 25,
+    "url": "http://197.33.49.1:18100/health",
+    "status": 200,
+    "body": "",
+    "time": 1792941223.2427328
+  },
+  {
+    "role": "D",
+    "node": 23,
+    "url": "http://197.33.47.1:18200/health",
+    "status": 200,
+    "body": "",
+    "time": 1792941223.243478
+  },
+  {
+    "role": "D",
+    "node": 24,
+    "url": "http://197.33.48.1:18200/health",
+    "status": 200,
+    "body": "",
+    "time": 1792941223.2525396
+  },
+  {
+    "role": "Proxy",
+    "node": 21,
+    "url": "http://197.33.45.1:18300/healthcheck",
+    "status": 200,
+    "body": "{\"status\":\"ok\",\"prefill_instances\":2,\"decode_instances\":2,\"request_num\":0}",
+    "time": 1792941223.2606149
+  }
+]

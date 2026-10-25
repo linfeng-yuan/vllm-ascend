@@ -151,10 +151,24 @@ P 的 max-num-seqs=16、max-num-batched-tokens=8192、max-model-len=1048576、GP
 
 重启前核对本实验容器归属与在途请求，向上一轮 D API 发送 SIGTERM 后再停止本实验 D 容器；不操作其他容器、驱动或网络。启动后确认五个后端健康、两台 D 图捕获完成、Proxy 健康和 PD 请求预热通过。逐进程命令、源码核对和健康检查保存在 `launch-records/3p1d-s32/`。
 
-## 当前 KV 低于 95% 的工作点
+## 3P1D：KV 低于 95% 的工作点
 
 采用 **客户端并发 24、请求数 256**，保持 3P1D、64 卡、D max-num-seqs=32、HCCL_BUFFSIZE=1088、128K/1K、90% 固定文本前缀和原镜像代码。未重启服务或修改模型参数。D 本地 prefix caching 关闭，P 开启。
 
 先验证 20 并发，再验证 24 并发。测试工具每 0.5 秒采样 D `kv_cache_usage_perc`、`num_preemptions_total`、`request_num_preemptions_sum`，同时保留指标是否实际存在的信息。达到 KV 95% 或检测到抢占增量即停止该次 AISBench 客户端进程组。测试完成后检查本轮日志字节偏移之后的返 P 重算消息，保存 `kv-preemption-validation.json`。这两组均全量成功、KV 峰值低于 95%、抢占增量为 0、返 P 重算日志匹配数为 0。
 
 24 并发的两台 D KV 峰值为 90.6067%、90.6164%。对应配置保存在 `profiles/3p1d-128k1k-p90-kv95.json`。本次调整的是 AISBench 客户端并发，服务端 max-num-seqs 仍为 32。20/24 两组的请求后缀 index 起点分别为 3000/4000。
+
+## 128K/1K：缩减为 2P1D
+
+P 保留 21/22、25/26 两个 PP2/PCP8/EP8 实例，共 32 卡；D 保留 23/24 的 DP2/PCP8/EP16 实例，共 16 卡。27/28 的本实验 P 容器已停止，并核对 NPU 无运行进程。本组实际使用 **48 卡**，单卡输入、输出和端到端吞吐均除以 48。
+
+D 按要求设置 `--max-num-seqs 16`，`HCCL_BUFFSIZE=1088`、`--max-num-batched-tokens 1024`、`--max-model-len 256000` 和其他参数沿用；继续使用原镜像源码及算子。P prefix caching 开启，D 本地 prefix caching 关闭。Proxy 沿用镜像内实现，workers=4，仅登记两个 P API、两个 D API。
+
+AISBench 使用 24 并发、256 请求，每条输入 131072 / 输出 1024 tokens，固定 90% 文本前缀。后缀 index 起点为 6000，避免旧后缀缓存污染；共同前缀和词表不变。先直连两个 P API 预热共同前缀，预热不计入正式结果。
+
+每 0.5 秒采样 P/D 和 Proxy。D 每 DP Running 超过 12、KV 达到 95%、发生抢占或缺少必需指标时停止本轮客户端，结果必须通过 `kv-preemption-validation.json`。全程输出以 AISBench 为准，D 平均 Running 使用 AISBench 稳态窗口内采样。
+
+P 的实际负载吞吐另用正式窗口前后 `Δprefix_cache_queries_total − Δprefix_cache_hits_total` 除以 AISBench 全程时长计算，并记录各 P 的请求数、TTFT、排队时间及同窗 Running/Waiting。这是本轮 PD 请求下的未缓存输入处理速率，没有单独测量 P 的饱和上限。
+
+和前一轮 3P1D 相比，除了少一组 P，D 的 max-num-seqs 从 32 改为 16，数据后缀也不同；因此两组用于比较实际部署工作点，不将性能差异全部归因于 P 数量。配置见 `profiles/2p1d-pcp8-128k1k-p90-kv95.json`。

@@ -1,0 +1,14 @@
+[
+  {
+    "node": 27,
+    "experiment_container_running": false,
+    "npu_processes": 0,
+    "time": 1792941229.8753188
+  },
+  {
+    "node": 28,
+    "experiment_container_running": false,
+    "npu_processes": 0,
+    "time": 1792941233.660245
+  }
+]

@@ -1,0 +1,115 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "rank": 0,
+    "url": "http://197.33.45.1:18100",
+    "elapsed": 0.3692162036895752,
+    "response": {
+      "id": "cmpl-92c36db34099d33d",
+      "object": "text_completion",
+      "created": 1792940959,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "P",
+    "node": 25,
+    "rank": 1,
+    "url": "http://197.33.49.1:18100",
+    "elapsed": 0.37043070793151855,
+    "response": {
+      "id": "cmpl-9b1a893b37f41a5b",
+      "object": "text_completion",
+      "created": 1792940952,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "Proxy",
+    "elapsed": 2.368478298187256,
+    "response": {
+      "id": "cmpl-0dce5066-6206-412f-ad1c-fd71a32b7d95",
+      "object": "text_completion",
+      "created": 1792940961,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " Aide Affiliate Affiliate Affiliate Affiliate Affiliate Affiliate Affiliate",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-dp2-ep-7108d6ae",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4112,
+        "completion_tokens": 16,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  }
+]

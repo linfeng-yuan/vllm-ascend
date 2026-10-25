@@ -1,0 +1,26 @@
+{
+  "phase": "complete",
+  "time": 1792941197.053753,
+  "tag": "2p1d-pcp8-stock-s16-h1088-prefill-scale-r20",
+  "p_service_tag": "3p1d-pcp8-prefix-mc2local-h320-r14",
+  "p_pairs": [
+    [
+      21,
+      22
+    ],
+    [
+      25,
+      26
+    ]
+  ],
+  "d_nodes": [
+    23,
+    24
+  ],
+  "hardware_cards": 48,
+  "d_hccl_buffsize": 1088,
+  "d_max_num_seqs": 16,
+  "d_mc2_tokens_capacity_expected": 96,
+  "code": "original image",
+  "case": "2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1"
+}

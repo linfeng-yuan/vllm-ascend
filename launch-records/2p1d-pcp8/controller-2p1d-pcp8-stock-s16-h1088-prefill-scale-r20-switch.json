@@ -1,0 +1,22 @@
+{
+  "phase": "complete",
+  "time": 1792941197.1151633,
+  "p_pairs": [
+    [
+      21,
+      22
+    ],
+    [
+      25,
+      26
+    ]
+  ],
+  "d_nodes": [
+    23,
+    24
+  ],
+  "hardware_cards": 48,
+  "d_max_num_seqs": 16,
+  "max_running_per_dp": 12,
+  "case": "2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1"
+}

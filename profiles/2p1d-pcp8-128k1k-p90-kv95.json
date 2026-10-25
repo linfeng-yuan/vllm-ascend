@@ -1,0 +1,41 @@
+{
+  "topology": "2P1D, 32P + 16D, total48 cards",
+  "p_pairs": [
+    [
+      21,
+      22
+    ],
+    [
+      25,
+      26
+    ]
+  ],
+  "d_nodes": [
+    23,
+    24
+  ],
+  "decode_max_num_seqs": 16,
+  "decode_hccl_buffsize": 1088,
+  "decode_local_prefix_caching": false,
+  "prefill_prefix_caching": true,
+  "concurrency": 24,
+  "data_num": 256,
+  "input_tokens": 131072,
+  "output_tokens": 1024,
+  "nominal_text_prefix_fraction": 0.9,
+  "kv_usage_limit": 0.95,
+  "max_running_per_dp": 12,
+  "sample_interval_seconds": 0.5,
+  "case": "2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1",
+  "service_tag": "2p1d-pcp8-stock-s16-h1088-prefill-scale-r20",
+  "p_service_tag": "3p1d-pcp8-prefix-mc2local-h320-r14",
+  "request_index_start": 6000,
+  "validated_case": "2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1",
+  "validated": true,
+  "observed_prefix_fraction": 0.875006675771147,
+  "decode_kv_tokens_per_dp": [
+    1019998,
+    1019524
+  ],
+  "decode_kv_tokens_total": 2039522
+}
