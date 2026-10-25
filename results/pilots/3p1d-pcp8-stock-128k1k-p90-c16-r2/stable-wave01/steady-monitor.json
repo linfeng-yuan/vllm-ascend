@@ -1,0 +1,29 @@
+{
+  "window_start_unix_estimate": 1792929086.8501942,
+  "window_end_unix_estimate": 1792929144.874342,
+  "clock_offset_unix_minus_perf_counter": 1790739260.2232301,
+  "clock_alignment": "same-host monotonic-to-wall offset measured during analysis; 1-second metrics sampling",
+  "samples": 58,
+  "dp_count": 2,
+  "d_total_running_mean": 13.155172413793103,
+  "per_dp_running_mean": 6.577586206896552,
+  "d_total_running_median": 13.0,
+  "d_total_running_peak": 16.0,
+  "per_dp": [
+    {
+      "rank": 0,
+      "running_mean": 6.603448275862069,
+      "running_min": 4.0,
+      "running_max": 8.0
+    },
+    {
+      "rank": 1,
+      "running_mean": 6.551724137931035,
+      "running_min": 5.0,
+      "running_max": 8.0
+    }
+  ],
+  "full_test_max_e2el_ms": 18497.8,
+  "stable_duration_ms": 58024.14777968079,
+  "aisbench_doc_duration_confidence_condition_met": true
+}

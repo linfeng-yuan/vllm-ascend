@@ -1,6 +1,6 @@
 # DeepSeek-V4-Pro-0813 PD 性能测试
 
-2026-10-25，Ascend 950DT，4K 输入 / 2K 输出，无 prefix 命中。保存两种 D 并行配置各自最后一次复测的结果和启动条件。
+2026-10-25，Ascend 950DT。保存 4K 输入 / 2K 输出的两种 D 并行配置复测，以及 128K 输入 / 1K 输出的 3P1D prefix 测试结果和启动条件。
 
 两组使用相同 r35 镜像、原镜像内 vLLM / vLLM-Ascend 代码和算子、同一模型权重，没有叠加 MC2 容量修改。完整环境和参数见 [测试条件](CONDITIONS.md)，逐个进程的实际参数见 [启动记录](launch-records/)，按节点整理的命令见 [启动脚本](launch/)。
 
@@ -66,4 +66,34 @@ DP32 组观察到 P 侧较长等待队列，D 稳态平均每 DP Running 为 10.
 - `results/`：两组复测的全程与稳态结果、计数核验、DP Running 和数据集 SHA256。
 - `tools/`：测试数据生成、AISBench 配置生成、监控、结果解析和稳态重算脚本；其中服务器绝对路径保留为当时值。
 
-后续 3P1D、128K/1K、90%/97% prefix 测试的配置和结果另行登记，不计入本页两组基线。
+## 128K/1K：3P1D，64 并发 / 256 请求
+
+本组 P 为三个 PP2/PCP8/EP8 实例，共 48 卡，prefix caching 开启；D 为 DP2/PCP8/EP16，共 16 卡，prefix caching 关闭。使用原镜像代码，D `max-num-seqs=8`、`HCCL_BUFFSIZE=272`，启动打印逻辑 KV 容量合计 2338177 tokens。全部单卡吞吐除以 **64 卡**。
+
+下表为两次已完成的正式测试，TTFT、TPOT 和吞吐取 AISBench 全程统计。按用户确认，保留固定的文本前缀比例，并报告缓存块对齐后的实际命中率。
+
+| 指标 | 90% 文本前缀 | 96% 文本前缀 |
+|---|---:|---:|
+| P 实测缓存命中率 | 87.5007% | 93.7507% |
+| 最大并发，客户端及 Proxy 实测 | 64 | 64 |
+| AISBench 平均并发 | 57.2306 | 57.1938 |
+| 总请求数 | 256 | 256 |
+| 成功 / 失败 | 256 / 0 | 256 / 0 |
+| 实际输入 / 输出 tokens，每条 | 131072 / 1024 | 131072 / 1024 |
+| TTFT Avg，ms | 28795.0 | 28064.7 |
+| TPOT Avg，ms | 9.8 | 9.6 |
+| 单卡输入吞吐，tokens/s/卡 | 3018.5060 | 3092.9874 |
+| 单卡输出吞吐，tokens/s/卡 | 23.5821 | 24.1640 |
+| 单卡端到端吞吐，tokens/s/卡 | 3042.0881 | 3117.1514 |
+| QPS，整组 req/s | 1.4739 | 1.5102 |
+| 整组输出吞吐，tokens/s | 1509.2530 | 1546.4937 |
+| D0 / D1 同窗口平均 Running | 7.864 / 7.880 | 7.851 / 7.884 |
+| D 同时峰值 Running，合计 | 16 | 16 |
+
+两组逐条输入、输出长度以及 D 成功计数、生成 token 增量全部吻合。缓存命中率取正式测试前后的 P metrics 增量，预热流量已排除。输入 token 吞吐包含命中缓存的输入 tokens。
+
+Running 使用 AISBench 稳态窗口内的同窗采样；上述延迟和 token 吞吐使用全程统计。两个稳态窗口分别为 125.59s、120.34s，均未达到最大 E2EL 三倍的时长判据，因此以全程 AISBench 数值作为性能主结果。
+
+结果与证据：[90% 组](results/3p1d-pcp8-stock-128k1k-p90-c64-n256-r1/result-summary.json)、[96% 组](results/3p1d-pcp8-stock-128k1k-p96-c64-n256-r1/result-summary.json)、[90% 实际命中增量](results/3p1d-pcp8-stock-128k1k-p90-c64-n256-r1/observed-prefix.json)、[96% 实际命中增量](results/3p1d-pcp8-stock-128k1k-p96-c64-n256-r1/observed-prefix.json)、[测试后健康检查](launch-records/3p1d/after-c64-n256-health.json)。环境、数据和缓存处理见 [128K/1K 测试条件](CONDITIONS.md#128k1k3p1d64-并发--256-请求)。
+
+此前的 16 并发 / 96 请求作为预跑单独保存在 `results/pilots/`。上述两组在 D `max-num-seqs=8` 时完成。后续按用户要求改为 D `max-num-seqs=32`、`HCCL_BUFFSIZE=1088`，只复测 90% 文本前缀；该档尚未计入本表。

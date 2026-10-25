@@ -11,6 +11,7 @@ import statistics
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path('/workspace/experiment')
@@ -65,7 +66,7 @@ def snapshot(path, targets):
     return rows
 
 
-def make_data(case, count, input_len, output_len, fraction):
+def make_data(case, count, input_len, output_len, fraction, request_index_start=0):
     from tokenizers import Tokenizer
     tok = Tokenizer.from_file(MODEL + '/tokenizer.json')
     length = lambda s: len(tok.encode(s, add_special_tokens=False).ids)
@@ -87,7 +88,7 @@ def make_data(case, count, input_len, output_len, fraction):
     dataset = case / 'dataset.jsonl'
     with dataset.open('wb') as stream:
         for index in range(count):
-            suffix = ''.join(random.Random(1000003 + index).choices(atoms, k=input_len - prefix_len))
+            suffix = ''.join(random.Random(1000003 + request_index_start + index).choices(atoms, k=input_len - prefix_len))
             question = prefix + suffix
             if index < 3 or index == count - 1:
                 assert length(question) == input_len, (index, length(question), input_len)
@@ -96,7 +97,7 @@ def make_data(case, count, input_len, output_len, fraction):
             stream.write(line)
             if first is None:
                 first = question
-    metadata = {'data_num': count, 'input_tokens': input_len, 'output_tokens': output_len, 'requested_prefix_fraction': fraction, 'prefix_tokens': prefix_len, 'block_aligned_prefix_fraction': prefix_len / input_len, 'data_method': 'mixed single-token words; shared prefix seed=1; suffix seed=1000003+request_index', 'vocabulary_sha256': hashlib.sha256(json.dumps(atoms).encode()).hexdigest(), 'prefix_sha256': hashlib.sha256(prefix.encode()).hexdigest(), 'dataset_sha256': digest.hexdigest(), 'first_question_sha256': hashlib.sha256(first.encode()).hexdigest(), 'round_trip_tokenizer': 'tokenizers.Tokenizer / add_special_tokens=False', 'path': str(dataset)}
+    metadata = {'data_num': count, 'input_tokens': input_len, 'output_tokens': output_len, 'requested_prefix_fraction': fraction, 'prefix_tokens': prefix_len, 'block_aligned_prefix_fraction': prefix_len / input_len, 'data_method': 'mixed single-token words; shared prefix seed=1; suffix seed=1000003+request_index_start+request_index', 'request_index_start': request_index_start, 'vocabulary_sha256': hashlib.sha256(json.dumps(atoms).encode()).hexdigest(), 'prefix_sha256': hashlib.sha256(prefix.encode()).hexdigest(), 'dataset_sha256': digest.hexdigest(), 'first_question_sha256': hashlib.sha256(first.encode()).hexdigest(), 'round_trip_tokenizer': 'tokenizers.Tokenizer / add_special_tokens=False', 'path': str(dataset)}
     (case / 'dataset.json').write_text(json.dumps(metadata, indent=2))
     return first, prefix, metadata
 
@@ -160,19 +161,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--topology', choices=['dp32', 'pcp8', 'pcp8-1p', 'pcp8-3p-remap'], required=True)
     parser.add_argument('--concurrency', type=int, required=True)
+    parser.add_argument('--data-num', type=int)
+    parser.add_argument('--request-index-start', type=int, default=0)
     parser.add_argument('--input-len', type=int, required=True)
     parser.add_argument('--output-len', type=int, required=True)
     parser.add_argument('--prefix-fraction', type=float, default=0)
     parser.add_argument('--service-tag', required=True)
+    parser.add_argument('--p-service-tag')
+    parser.add_argument('--fresh-prefix-without-reset', action='store_true')
     parser.add_argument('--case-id', required=True)
     parser.add_argument('--dry-run', action='store_true')
     a = parser.parse_args()
     case = ROOT / 'benchmarks' / a.case_id
     case.mkdir(parents=True, exist_ok=False)
-    count = 6 * a.concurrency
-    first, prefix, metadata = make_data(case, count, a.input_len, a.output_len, a.prefix_fraction)
+    count = a.data_num if a.data_num is not None else 6 * a.concurrency
+    assert count > 0 and a.request_index_start >= 0
+    first, prefix, metadata = make_data(case, count, a.input_len, a.output_len, a.prefix_fraction, a.request_index_start)
     metadata['hardware_cards'] = 32 if a.topology == 'pcp8-1p' else 64
     metadata['topology'] = a.topology
+    metadata['p_service_tag'] = a.p_service_tag or a.service_tag
     (case / 'dataset.json').write_text(json.dumps(metadata, indent=2))
     make_config(case, a.concurrency, a.output_len)
     cmd = ['ais_bench', str(case / 'config.py'), '--mode', 'perf', '--work-dir', str(case / 'output'), '--num-prompts', str(count), '--num-warmups', '0', '--debug']
@@ -193,8 +200,29 @@ def main():
     assert status.get('request_num', 0) == 0, status
     snapshot(case / 'pre-warmup.json', ps + ds)
     if prefix:
+        resets = []
         for target in ps:
-            http(target['url'] + '/reset_prefix_cache', {}, timeout=60)
+            try:
+                result = json.loads(http(target['url'] + '/reset_prefix_cache', {}, timeout=60))
+                assert result.get('success', True), result
+                resets.append(dict(target, result=result))
+            except urllib.error.HTTPError as exc:
+                if exc.code != 404 or not a.fresh_prefix_without_reset:
+                    raise
+                # This image exposes cache reset only in server dev mode.
+                # Reusing complete prompts would turn a nominal prefix test
+                # into full cache hits, so permit this only for unused inputs
+                # within the explicitly recorded P process lifetime.
+                for old in (ROOT / 'benchmarks').glob('*/dataset.json'):
+                    if not (old.parent / 'before.json').exists():
+                        continue
+                    prior = json.loads(old.read_text())
+                    assert not (
+                        prior.get('p_service_tag') == metadata['p_service_tag']
+                        and prior.get('first_question_sha256') == metadata['first_question_sha256']
+                    ), ('Prompts already used with these P processes; cache reset or a P restart is required', str(old))
+                resets.append(dict(target, status='reset endpoint unavailable; inputs unused in this P lifetime', http_status=404))
+        (case / 'cache-reset.json').write_text(json.dumps(resets, indent=2))
         warms = []
         for target in ps:
             response = json.loads(http(target['url'] + '/v1/completions', {'model': MODEL_NAME, 'prompt': prefix, 'max_tokens': 1, 'ignore_eos': True, 'add_special_tokens': False, 'temperature': 0}, timeout=1200))

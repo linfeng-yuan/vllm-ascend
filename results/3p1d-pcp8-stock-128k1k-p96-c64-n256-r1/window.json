@@ -1,0 +1,20 @@
+{
+  "started": 1792929965.0877345,
+  "ended": 1792930160.4842792,
+  "returncode": 0,
+  "command": [
+    "ais_bench",
+    "/workspace/experiment/benchmarks/3p1d-pcp8-stock-128k1k-p96-c64-n256-r1/config.py",
+    "--mode",
+    "perf",
+    "--work-dir",
+    "/workspace/experiment/benchmarks/3p1d-pcp8-stock-128k1k-p96-c64-n256-r1/output",
+    "--num-prompts",
+    "256",
+    "--num-warmups",
+    "0",
+    "--debug"
+  ],
+  "concurrency": 64,
+  "data_num": 256
+}

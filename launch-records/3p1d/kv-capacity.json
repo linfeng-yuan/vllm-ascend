@@ -1,0 +1,89 @@
+{
+  "time": 1792928754.7675393,
+  "tag": "3p1d-pcp8-prefix-stock-s8-h272-r17",
+  "ready": 5,
+  "expected_endpoints": 5,
+  "kv_capacity_ranks": 2,
+  "d_total_logical_kv_tokens": 2338177,
+  "logs": [
+    {
+      "log": "node23-d-rank0.log",
+      "bytes": 154985,
+      "updated": 1792928906.9244683,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1169326
+      ],
+      "kv_tokens": 1169326,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node24-d-rank1.log",
+      "bytes": 139502,
+      "updated": 1792928906.4583273,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1168851
+      ],
+      "kv_tokens": 1168851,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(EngineCore_DP1 pid=168) WARNING 10-25 11:45:57 [utils.py:1524] For deepseek_v4 model, block size should be 32, 64 or 128. Setting block size to 32 for better performance.",
+        "(EngineCore_DP1 pid=168) INFO 10-25 11:45:57 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True"
+      ]
+    },
+    {
+      "log": "p-preflight-early.log",
+      "bytes": 2165,
+      "updated": 1792928822.6208909,
+      "loading_shards": null,
+      "loading_completed": false,
+      "kv_tokens_messages": [],
+      "kv_tokens": null,
+      "graph_finished": false,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "[{\"role\": \"P\", \"node\": 21, \"rank\": 0, \"url\": \"http://197.33.45.1:18100\", \"elapsed\": 10.39339828491211, \"response\": {\"id\": \"cmpl-9c0bb29853e63343\", \"object\": \"text_completion\", \"created\": 1792928662, \"model\": \"dsv4-pro-0813\", \"choices\": [{\"index\": 0, \"text\": \" A\", \"logprobs\": null, \"finish_reason\": \"length\", \"stop_reason\": null, \"token_ids\": null, \"prompt_logprobs\": null, \"prompt_token_ids\": null, \"routed_experts\": null}], \"service_tier\": null, \"system_fingerprint\": \"vllm-0.30.0-pp2-ep-1ea68878\", \"usage\": {\"prompt_tokens\": 4096, \"total_tokens\": 4097, \"completion_tokens\": 1, \"prompt_tokens_details\": null, \"completion_tokens_details\": null}, \"kv_transfer_params\": null, \"ec_transfer_params\": null, \"metrics\": null}}, {\"role\": \"P\", \"node\": 25, \"rank\": 1, \"url\": \"http://197.33.49.1:18100\", \"elapsed\": 11.438278436660767, \"response\": {\"id\": \"cmpl-93d6115eb7f40f33\", \"object\": \"text_completion\", \"created\": 1792928655, \"model\": \"dsv4-pro-0813\", \"choices\": [{\"index\": 0, \"text\": \" A\", \"logprobs\": null, \"finish_reason\": \"length\", \"stop_reason\": null, \"token_ids\": null, \"prompt_logprobs\": null, \"prompt_token_ids\": null, \"routed_experts\": null}], \"service_tier\": null, \"system_fingerprint\": \"vllm-0.30.0-pp2-ep-1ea68878\", \"usage\": {\"prompt_tokens\": 4096, \"total_tokens\": 4097, \"completion_tokens\": 1, \"prompt_tokens_details\": null, \"completion_tokens_details\": null}, \"kv_transfer_params\": null, \"ec_transfer_params\": null, \"metrics\": null}}, {\"role\": \"P\", \"node\": 27, \"rank\": 2, \"url\": \"http://197.33.51.1:18100\", \"elapsed\": 11.03389048576355, \"response\": {\"id\": \"cmpl-a5cdeb5a762595b9\", \"object\": \"text_completion\", \"created\": 1792928664, \"model\": \"dsv4-pro-0813\", \"choices\": [{\"index\": 0, \"text\": \" A\", \"logprobs\": null, \"finish_reason\": \"length\", \"stop_reason\": null, \"token_ids\": null, \"prompt_logprobs\": null, \"prompt_token_ids\": null, \"routed_experts\": null}], \"service_tier\": null, \"system_fingerprint\": \"vllm-0.30.0-pp2-ep-1ea68878\", \"usage\": {\"prompt_tokens\": 4096, \"total_tokens\": 4097, \"completion_tokens\": 1, \"prompt_tokens_details\": null, \"completion_tokens_details\": null}, \"kv_transfer_params\": null, \"ec_transfer_params\": null, \"metrics\": null}}]"
+      ]
+    }
+  ],
+  "health": [
+    {
+      "node": 21,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 23,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 24,
+      "port": 18200,
+      "status": 200
+    }
+  ],
+  "phase": "ready"
+}

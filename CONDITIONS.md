@@ -94,3 +94,42 @@ KV 和 indexer KV 均用 FP8，block-size=32；启用 hybrid KV cache manager、
 最初的 3P1D 在 27/28 遇到通信初始化异常，未产生性能结果。按测试要求改为四机 1P1D，D 移到 23/24 后完成复测。PCP8 的 batch token 上限随后明确设为 1024，D 上下文设为 256000，并补上 CCU_SCHED；本页记录的是这些修改后的成功配置。
 
 稳态结果通过原始打点重算，并单独保存原始文件 SHA256、重算命令、窗口和 DP 监控。两个窗口都没有达到最大 E2EL 三倍的时长判据，因此同时提供全程结果。逐请求均值 `OutputTokenThroughput` 不是整组输出吞吐，本页没有用它替代 AISBench `Output Token Throughput`。
+
+## 128K/1K：3P1D，64 并发 / 256 请求
+
+本节是另一组测试条件，与前面的 4K/2K 四机 1P1D 分开记录。使用同一镜像、权重和原镜像代码，合计 **64 卡**。
+
+| 项目 | 配置 |
+|---|---|
+| P | 21/22、25/26、27/28，共三个 PP2/PCP8/EP8 实例，48 卡 |
+| D | 23/24，external DP2/PCP8/EP16，一个 D 实例，16 卡 |
+| P / D prefix caching | 开启 / 关闭 |
+| D max-num-seqs | 8 |
+| D max-num-batched-tokens | 1024 |
+| D max-model-len | 256000 |
+| D gpu-memory-utilization | 0.95 |
+| D HCCL_BUFFSIZE | 272，双 buffer 合计 544MB |
+| D DSpark | 5，enforce_eager=false，实际接受结果 |
+| D 图模式 | FULL_DECODE_ONLY，npugraph_ex=true，static_kernel=false |
+| D combine_quant_mode / recompute scheduler | 4 / true |
+| D 启动打印 KV tokens | DP0=1169326，DP1=1168851，合计 2338177 |
+| 客户端并发 / 请求数 | 64 / 256，按本组明确指定值覆盖先前的 6 倍请求数规则 |
+| 实际输入 / 输出 | 每条 131072 / 1024 tokens |
+| 单卡吞吐分母 | 全部 P+D 共 64 卡 |
+
+P 的 max-num-seqs=16、max-num-batched-tokens=8192、max-model-len=1048576、GPU 利用率 0.94、eager 保持不变。Proxy workers=4，登记三个 P API 和两个 D API。逐台命令见 [3P1D 启动脚本](launch/3p1d/)，实际参数与源码核对见 [3P1D 启动记录](launch-records/3p1d/)。
+
+按用户确认，每条请求使用固定比例的文本前缀，并报告实际缓存命中率：
+
+| 文本前缀目标 | 生成的共同前缀 tokens | 实际可命中的前缀 tokens/请求 | 预期实际命中率 |
+|---|---:|---:|---:|
+| 90% | 117952 | 114688 | 约 87.5% |
+| 96% | 125824 | 122880 | 约 93.75% |
+
+命中长度按模型缓存的 4096-token 边界向下对齐。实际比例使用 P metrics 的 `Δprefix_cache_hits_total / Δprefix_cache_queries_total`；queries 计数按该版本服务口径，每请求为 131071，因此小数结果略高于上述百分比。正式结果以各组 `observed-prefix.json` 为准。
+
+每组先直连三个 P API，预热相应的共同前缀，max_tokens=1，预热不计入正式计数。镜像默认未注册开发模式的 `/reset_prefix_cache` HTTP 接口。为避免前一轮完整请求的后缀缓存影响本轮，正式 64/256 数据使用 `request_index_start=1000`，后缀种子为 `1000003+request_index_start+request_index`；共同前缀种子仍为 1。测试工具记录 P 进程标签，并检查相同完整输入没有在这些 P 进程中被正式测试过。96% 和 90% 的完整输入因前缀长度不同而不同，各自的数据集 SHA256、首条 question SHA256 和实际命中增量均归档。
+
+输入 token 吞吐包含命中缓存的输入 tokens。仍按 AISBench 整体 Input/Output/Total Token Throughput 除以 64 计算三项单卡吞吐，不能把输入 token 吞吐直接当作 P 的独立计算吞吐。
+
+16 并发 / 96 请求的两次运行作为预跑保存于 `results/pilots/`。正式对照使用 64 并发 / 256 请求。

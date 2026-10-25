@@ -1,0 +1,19 @@
+{
+  "data_num": 256,
+  "input_tokens": 131072,
+  "output_tokens": 1024,
+  "requested_prefix_fraction": 0.9,
+  "prefix_tokens": 117952,
+  "block_aligned_prefix_fraction": 0.89990234375,
+  "data_method": "mixed single-token words; shared prefix seed=1; suffix seed=1000003+request_index_start+request_index",
+  "request_index_start": 1000,
+  "vocabulary_sha256": "3caa64c2b2fddcb7c73fd4c7642ddb241493353c8e9fce1f2a77034c8986dff8",
+  "prefix_sha256": "07da4f8dc438065ca7566eee43f332c68b5c5cf1f70bb795f97d0c7a1771fed6",
+  "dataset_sha256": "09fb6261c9163727957c4eb548b4268b8c22df960e19dadef2d489016a3e8b82",
+  "first_question_sha256": "3ed5724c11472cc17276d1c3df1420550088d57865e15e3242010f85c9d6b4fa",
+  "round_trip_tokenizer": "tokenizers.Tokenizer / add_special_tokens=False",
+  "path": "/workspace/experiment/benchmarks/3p1d-pcp8-stock-128k1k-p90-c64-n256-r1/dataset.jsonl",
+  "hardware_cards": 64,
+  "topology": "pcp8-3p-remap",
+  "p_service_tag": "3p1d-pcp8-prefix-mc2local-h320-r14"
+}

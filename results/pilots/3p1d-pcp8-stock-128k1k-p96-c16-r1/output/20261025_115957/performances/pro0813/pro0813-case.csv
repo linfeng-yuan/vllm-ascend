@@ -1,0 +1,8 @@
+Performance Parameters,Stage,Average,Min,Max,Median,P75,P90,P99,N
+E2EL,total,11703.4 ms,9164.0 ms,21625.2 ms,11365.6 ms,12285.3 ms,12901.9 ms,20818.9 ms,96
+TTFT,total,2358.6 ms,1699.5 ms,4072.9 ms,2181.6 ms,2731.9 ms,3197.7 ms,3955.6 ms,96
+TPOT,total,9.1 ms,7.3 ms,18.9 ms,8.5 ms,9.6 ms,10.8 ms,17.8 ms,96
+ITL,total,51.0 ms,0.0 ms,565.4 ms,46.5 ms,47.6 ms,52.3 ms,168.1 ms,96
+InputTokens,total,131072.0,131072.0,131072.0,131072.0,131072.0,131072.0,131072.0,96
+OutputTokens,total,1024.0,1024.0,1024.0,1024.0,1024.0,1024.0,1024.0,96
+OutputTokenThroughput,total,88.9698 token/s,47.3521 token/s,111.742 token/s,90.1008 token/s,96.6187 token/s,98.908 token/s,108.4385 token/s,96
