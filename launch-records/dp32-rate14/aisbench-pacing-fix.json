@@ -1,0 +1,9 @@
+{
+  "original_source": "/vllm-workspace/vllm-ascend/benchmark/ais_bench/benchmark/tasks/utils.py",
+  "original_sha256": "c3b4bce880bdb9610763cc286d32f91e31118c8ebfd91dba15d6b9b5b4849c4b",
+  "copy_source": "/workspace/experiment/tools/aisbench-rate14/ais_bench/benchmark/tasks/utils.py",
+  "copy_sha256": "4362503c011bbb0accab8652cb4674b36352bdef5b237bf3c4e1e43845996e2b",
+  "patch_sha256": "fd98fbb0cfc37ed2836a9fb2e4668e50d3105c9324f9412099282b286a4b863d",
+  "original_source_unchanged": true,
+  "change": "support deterministic pacing when burstiness=0; avoid division by zero and use fixed fallback sleeps"
+}

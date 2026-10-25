@@ -1,0 +1,827 @@
+{
+  "time": 1792942316.6866417,
+  "tag": "dp32-noprefix-s32-h1088-rate14-r22",
+  "ready": 34,
+  "expected_endpoints": 34,
+  "kv_capacity_ranks": 32,
+  "d_total_logical_kv_tokens": 120456272,
+  "logs": [
+    {
+      "log": "node21-p0-stage0.log",
+      "bytes": 114495,
+      "updated": 1792942459.3066318,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1363141
+      ],
+      "kv_tokens": 1363141,
+      "graph_finished": false,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     197.33.46.1:33546 - \"GET /health HTTP/1.1\" 200 OK",
+        "(APIServer pid=108) INFO:     197.33.46.1:34584 - \"GET /health HTTP/1.1\" 200 OK"
+      ]
+    },
+    {
+      "log": "node22-p0-stage1.log",
+      "bytes": 109749,
+      "updated": 1792942054.7762527,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [],
+      "kv_tokens": null,
+      "graph_finished": false,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(Worker_PP1_PCP1_EP1 pid=186) INFO 10-25 15:24:59 [cpu_binding.py:695] [irq] IRQ binding skipped on Ascend 950.",
+        "(Worker_PP1_PCP2_EP2 pid=187) INFO 10-25 15:25:00 [cpu_binding.py:695] [irq] IRQ binding skipped on Ascend 950."
+      ]
+    },
+    {
+      "log": "node23-p1-stage0.log",
+      "bytes": 113204,
+      "updated": 1792942459.2193208,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1363104
+      ],
+      "kv_tokens": 1363104,
+      "graph_finished": false,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=100) INFO:     197.33.46.1:40168 - \"GET /health HTTP/1.1\" 200 OK",
+        "(APIServer pid=100) INFO:     197.33.46.1:54980 - \"GET /health HTTP/1.1\" 200 OK"
+      ]
+    },
+    {
+      "log": "node24-p1-stage1.log",
+      "bytes": 109749,
+      "updated": 1792942131.362753,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [],
+      "kv_tokens": null,
+      "graph_finished": false,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(Worker_PP1_PCP6_EP6 pid=161) INFO 10-25 15:26:20 [cpu_binding.py:695] [irq] IRQ binding skipped on Ascend 950.",
+        "(Worker_PP1_PCP4_EP4 pid=159) INFO 10-25 15:26:20 [cpu_binding.py:695] [irq] IRQ binding skipped on Ascend 950."
+      ]
+    },
+    {
+      "log": "node25-d-rank0.log",
+      "bytes": 54706,
+      "updated": 1792942461.1652746,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765003
+      ],
+      "kv_tokens": 3765003,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank1.log",
+      "bytes": 39555,
+      "updated": 1792942461.1653507,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764441
+      ],
+      "kv_tokens": 3764441,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=109) INFO:     Waiting for application startup.",
+        "(APIServer pid=109) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank2.log",
+      "bytes": 39551,
+      "updated": 1792942461.1652632,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763992
+      ],
+      "kv_tokens": 3763992,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=110) INFO:     Waiting for application startup.",
+        "(APIServer pid=110) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank3.log",
+      "bytes": 39556,
+      "updated": 1792942461.1652544,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=111) INFO:     Waiting for application startup.",
+        "(APIServer pid=111) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank4.log",
+      "bytes": 39555,
+      "updated": 1792942461.165237,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=112) INFO:     Waiting for application startup.",
+        "(APIServer pid=112) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank5.log",
+      "bytes": 39665,
+      "updated": 1792942461.1651819,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=113) INFO:     Waiting for application startup.",
+        "(APIServer pid=113) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank6.log",
+      "bytes": 39664,
+      "updated": 1792942461.1652367,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764554
+      ],
+      "kv_tokens": 3764554,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=114) INFO:     Waiting for application startup.",
+        "(APIServer pid=114) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node25-d-rank7.log",
+      "bytes": 39556,
+      "updated": 1792942461.165209,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765003
+      ],
+      "kv_tokens": 3765003,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=115) INFO:     Waiting for application startup.",
+        "(APIServer pid=115) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank10.log",
+      "bytes": 39737,
+      "updated": 1792942460.077708,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=110) INFO:     Waiting for application startup.",
+        "(APIServer pid=110) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank11.log",
+      "bytes": 39740,
+      "updated": 1792942460.0777264,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763767
+      ],
+      "kv_tokens": 3763767,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=111) INFO:     Waiting for application startup.",
+        "(APIServer pid=111) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank12.log",
+      "bytes": 39740,
+      "updated": 1792942460.077735,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763654
+      ],
+      "kv_tokens": 3763654,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=112) INFO:     Waiting for application startup.",
+        "(APIServer pid=112) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank13.log",
+      "bytes": 39740,
+      "updated": 1792942460.0777693,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=113) INFO:     Waiting for application startup.",
+        "(APIServer pid=113) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank14.log",
+      "bytes": 39741,
+      "updated": 1792942460.077735,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764441
+      ],
+      "kv_tokens": 3764441,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=114) INFO:     Waiting for application startup.",
+        "(APIServer pid=114) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank15.log",
+      "bytes": 39850,
+      "updated": 1792942460.077708,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765003
+      ],
+      "kv_tokens": 3765003,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=115) INFO:     Waiting for application startup.",
+        "(APIServer pid=115) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank8.log",
+      "bytes": 39564,
+      "updated": 1792942460.0777264,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765003
+      ],
+      "kv_tokens": 3765003,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node26-d-rank9.log",
+      "bytes": 39567,
+      "updated": 1792942460.0777454,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764441
+      ],
+      "kv_tokens": 3764441,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=109) INFO:     Waiting for application startup.",
+        "(APIServer pid=109) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank16.log",
+      "bytes": 39740,
+      "updated": 1792942462.0205603,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765003
+      ],
+      "kv_tokens": 3765003,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank17.log",
+      "bytes": 39740,
+      "updated": 1792942462.020583,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764329
+      ],
+      "kv_tokens": 3764329,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=109) INFO:     Waiting for application startup.",
+        "(APIServer pid=109) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank18.log",
+      "bytes": 39736,
+      "updated": 1792942462.0205956,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763767
+      ],
+      "kv_tokens": 3763767,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=110) INFO:     Waiting for application startup.",
+        "(APIServer pid=110) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank19.log",
+      "bytes": 39740,
+      "updated": 1792942462.020497,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763767
+      ],
+      "kv_tokens": 3763767,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=111) INFO:     Waiting for application startup.",
+        "(APIServer pid=111) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank20.log",
+      "bytes": 39741,
+      "updated": 1792942462.0205598,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763992
+      ],
+      "kv_tokens": 3763992,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=112) INFO:     Waiting for application startup.",
+        "(APIServer pid=112) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank21.log",
+      "bytes": 39741,
+      "updated": 1792942462.020513,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=113) INFO:     Waiting for application startup.",
+        "(APIServer pid=113) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank22.log",
+      "bytes": 39741,
+      "updated": 1792942462.020583,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764216
+      ],
+      "kv_tokens": 3764216,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=114) INFO:     Waiting for application startup.",
+        "(APIServer pid=114) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node27-d-rank23.log",
+      "bytes": 39740,
+      "updated": 1792942462.0205598,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765116
+      ],
+      "kv_tokens": 3765116,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=115) INFO:     Waiting for application startup.",
+        "(APIServer pid=115) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank24.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231325,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3765116
+      ],
+      "kv_tokens": 3765116,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank25.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231406,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764216
+      ],
+      "kv_tokens": 3764216,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=109) INFO:     Waiting for application startup.",
+        "(APIServer pid=109) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank26.log",
+      "bytes": 39736,
+      "updated": 1792942459.6230578,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763654
+      ],
+      "kv_tokens": 3763654,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=110) INFO:     Waiting for application startup.",
+        "(APIServer pid=110) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank27.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231441,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763879
+      ],
+      "kv_tokens": 3763879,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=111) INFO:     Waiting for application startup.",
+        "(APIServer pid=111) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank28.log",
+      "bytes": 39740,
+      "updated": 1792942459.6230578,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763767
+      ],
+      "kv_tokens": 3763767,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=112) INFO:     Waiting for application startup.",
+        "(APIServer pid=112) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank29.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231325,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3763767
+      ],
+      "kv_tokens": 3763767,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=113) INFO:     Waiting for application startup.",
+        "(APIServer pid=113) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank30.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231325,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764216
+      ],
+      "kv_tokens": 3764216,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=114) INFO:     Waiting for application startup.",
+        "(APIServer pid=114) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node28-d-rank31.log",
+      "bytes": 39740,
+      "updated": 1792942459.6231325,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        3764891
+      ],
+      "kv_tokens": 3764891,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=115) INFO:     Waiting for application startup.",
+        "(APIServer pid=115) INFO:     Application startup complete."
+      ]
+    }
+  ],
+  "health": [
+    {
+      "node": 21,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 23,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18201,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18202,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18203,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18204,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18205,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18206,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18207,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18201,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18202,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18203,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18204,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18205,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18206,
+      "status": 200
+    },
+    {
+      "node": 26,
+      "port": 18207,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18201,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18202,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18203,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18204,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18205,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18206,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18207,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18201,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18202,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18203,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18204,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18205,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18206,
+      "status": 200
+    },
+    {
+      "node": 28,
+      "port": 18207,
+      "status": 200
+    }
+  ],
+  "phase": "ready"
+}

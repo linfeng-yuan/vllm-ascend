@@ -1,6 +1,6 @@
 # DeepSeek-V4-Pro-0813 PD 性能测试
 
-最新完成 **2P1D，48 卡，AISBench 24 并发 / 256 请求**。D `max-num-seqs=16`，每 DP Running 峰值均为 12，KV 峰值为 **89.63%、89.59%**，没有抢占或返 P 重算。平均 TTFT **3306.2ms**、TPOT **12.6ms**，整体输出 **1443.3066 tokens/s**。配置见 [2P1D 工作点](profiles/2p1d-pcp8-128k1k-p90-kv95.json)，完整对比见本页最后一节。
+最新完成 **4K/2K、DP32/EP32、匀速 14 QPS** 复测：512 并发上限、3084 请求，TTFT **1460.3ms**、TPOT **10.2ms**，整体输出 **24513.4284 tokens/s**。实测客户端在途峰值 329，全部请求成功。配置见 [14 QPS 工作点](profiles/dp32-4k2k-rate14.json)，完整结果见本页最后一节。
 
 2026-10-25，Ascend 950DT。保存 4K 输入 / 2K 输出的两种 D 并行配置复测，以及 128K 输入 / 1K 输出的 3P1D prefix 测试结果和启动条件。
 
@@ -199,3 +199,35 @@ P 的正式窗口 metrics 记录如下，处理速率只计未命中的 query to
 本轮 AISBench 稳态窗口 152.09 秒，满足最大 E2EL 三倍时长判据；该窗口 TTFT 为 2977.0ms、TPOT 为 12.3ms、整体输出为 1561.9999 tokens/s。全程主结果仍使用上表。D 启动打印 KV 容量合计 **2039522 tokens**，两 DP 分别为 1019998、1019524。
 
 原始结果：[AISBench 全程结果](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/result-summary.json)、[同窗口 D Running](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/stable-wave01/steady-monitor.json)、[P 吞吐与排队](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/prefill-throughput.json)、[KV / Running / 抢占验收](results/2p1d-pcp8-stock-s16-h1088-128k1k-p90-c24-n256-kv95-r1/kv-preemption-validation.json)、[启动记录与健康检查](launch-records/2p1d-pcp8/)、[启动脚本](launch/2p1d-pcp8/)。
+
+## 4K/2K：DP32/EP32，匀速 14 QPS
+
+恢复原 2P1D 配置：P 使用 21/22、23/24，共 32 卡；D 使用 25～28，DP32/EP32，共 32 卡。P/D prefix caching 均关闭，D max-num-seqs=32、HCCL_BUFFSIZE=1088，服务参数与最初 4K/2K 复测一致。原镜像模型代码和算子未修改。
+
+| 指标 | 原不限速测试 | 本轮匀速 14 QPS |
+|---|---:|---:|
+| 总卡数 | 64 | 64 |
+| 客户端并发上限 | 960 | 512 |
+| 请求数 / 成功 / 失败 | 5760 / 5760 / 0 | 3084 / 3084 / 0 |
+| AISBench 平均并发 | 865.5199 | 268.4543 |
+| 客户端实测在途峰值 | 960 | 329 |
+| Proxy 实测在途峰值 | 960 | 328 |
+| TTFT Avg，ms | 41082.5 | 1460.3 |
+| TTFT P50 / P75 / P90，ms | — | 1469.0 / 1548.3 / 1597.4 |
+| TPOT Avg，ms | 10.9 | 10.2 |
+| 单卡输入吞吐，tokens/s/卡 | 875.0681 | 766.0446 |
+| 单卡输出吞吐，tokens/s/卡 | 437.5341 | 383.0223 |
+| 单卡端到端吞吐，tokens/s/卡 | 1312.6022 | 1149.0670 |
+| QPS，AISBench 全程完成吞吐 | 13.6729 | 11.9694 |
+| 整组输出吞吐，tokens/s | 28002.1795 | 24513.4284 |
+| AISBench 全程时长，s | 421.2701 | 257.6560 |
+
+本轮实际发送速率为 **14.0000 QPS**，首条至末条发出共 220.2141 秒，末条发出后还有 37.4419 秒响应收尾。因此发送 RR=14 和全程完成 QPS=11.9694 分开报告。AISBench 打印的 Max Concurrency=512 是配置上限，客户端时间戳重建的在途峰值为 329，不能把 512 当作实测并发。
+
+TTFT 从 41.08 秒降到 1.46 秒。两个 P 的平均排队分别为 **26.9ms、37.6ms**。在首条发出 30 秒后至末条发出的持续发送窗口内，D 平均 Running 合计 **297.98**，约 **9.31/DP**，同时峰值 309；两个 P 的平均 Waiting 分别为 0.184、0.200。窗口定义和每个 DP 的原始统计保存在 [持续发送窗口监控](results/dp32-4k2k-c512-n3084-qps14-r3/paced-monitor.json)。
+
+限速后没有达到配置的 512 并发，AISBench 原生 WAVE_OFFSET=0.1 稳态选择器找不到窗口。本页使用原生全程统计；上述持续发送窗口只用于观察 Running/Waiting，不作为 AISBench 稳态性能结果。3084 条输入均为 4096 tokens、输出均为 2048 tokens，D 成功数和生成 token 增量全部吻合，32 个 D DP 均有采样和成功请求，无抢占或返 P 重算。
+
+测试工具曾在 `burstiness=0` 下触发除零错误，首个尝试没有发送正式请求。修复仅应用于独立 AISBench 工具副本，镜像原文件保持不变；见 [限速补丁](tools/aisbench-rate14.patch) 和 [源码 SHA256](launch-records/dp32-rate14/aisbench-pacing-fix.json)。随后按要求将 960/5760 调整为 512/3084，先排空旧轮，完整结果只使用本轮。
+
+结果与条件：[AISBench 全程汇总](results/dp32-4k2k-c512-n3084-qps14-r3/result-summary.json)、[P 吞吐与排队](results/dp32-4k2k-c512-n3084-qps14-r3/prefill-throughput.json)、[KV / 抢占验收](results/dp32-4k2k-c512-n3084-qps14-r3/kv-preemption-validation.json)、[启动参数和健康检查](launch-records/dp32-rate14/)、[测试条件](CONDITIONS.md#4k2kdp32ep32限速复测)。

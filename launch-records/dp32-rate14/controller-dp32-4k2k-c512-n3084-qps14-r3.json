@@ -1,0 +1,15 @@
+{
+  "case": "dp32-4k2k-c512-n3084-qps14-r3",
+  "service_tag": "dp32-noprefix-s32-h1088-rate14-r22",
+  "phase": "complete",
+  "time": 1792944235.32133,
+  "request_rate": 14,
+  "burstiness": 0,
+  "concurrency_limit": 512,
+  "data_num": 3084,
+  "hardware_cards": 64,
+  "error": "RuntimeError((22, ['docker', 'exec', 'ylf_pro0813_20261025', 'python', '/workspace/experiment/scripts/recompute_steady.py', '/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3'], 1, '', 'Traceback (most recent call last):\\n  File \"/workspace/experiment/scripts/recompute_steady.py\", line 47, in <module>\\n    assert result.returncode == 0, result.returncode\\n           ^^^^^^^^^^^^^^^^^^^^^^\\nAssertionError: 1\\n'))",
+  "aisbench_whole_test_valid": true,
+  "aisbench_steady_stage_available": false,
+  "steady_analysis_note": "512 configured concurrency not reached under rate14; report complete native AISBench statistics and separately labelled sustained-sending monitor window"
+}

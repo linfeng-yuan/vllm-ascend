@@ -1,0 +1,37 @@
+--- a/ais_bench/benchmark/tasks/utils.py
++++ b/ais_bench/benchmark/tasks/utils.py
+@@ -640,7 +640,7 @@
+         if not self.token_bucket:
+             return
+         interval_index = 0
+-        theta = 1.0 / (self.request_rate * self.burstiness) if self.request_rate > 0 else 0
++        theta = 1.0 / (self.request_rate * self.burstiness) if self.request_rate > 0 and self.burstiness > 0 else 0
+ 
+         start_time = time.perf_counter()
+         if len(self.interval_lists) > 0:
+@@ -658,7 +658,7 @@
+                 except ValueError as e:
+                     # ValueError: semaphore or lock released too many times
+                     # Indicates token bucket is full, wait for tokens to be used
+-                    wait_interval = np.random.gamma(shape=self.burstiness, scale=theta)
++                    wait_interval = 1.0 / self.request_rate if self.burstiness == 0 and self.request_rate > 0 else np.random.gamma(shape=self.burstiness, scale=theta)
+                     time.sleep(wait_interval)
+                     continue
+                 interval_index += 1
+@@ -667,7 +667,7 @@
+                     self.token_bucket.release() # release None token to avoid deadlock
+                 except Exception:
+                     pass
+-                interval = np.random.gamma(shape=self.burstiness, scale=theta)
++                interval = 1.0 / self.request_rate if self.burstiness == 0 and self.request_rate > 0 else np.random.gamma(shape=self.burstiness, scale=theta)
+                 time.sleep(interval)
+             else:
+                 try:
+@@ -678,6 +678,6 @@
+                 except Exception as e:
+                     # ValueError: semaphore or lock released too many times
+                     # Indicates token bucket is full, wait for tokens to be used
+-                    interval = np.random.gamma(shape=self.burstiness, scale=theta)
++                    interval = 1.0 / self.request_rate if self.burstiness == 0 and self.request_rate > 0 else np.random.gamma(shape=self.burstiness, scale=theta)
+                     time.sleep(interval)
+ 

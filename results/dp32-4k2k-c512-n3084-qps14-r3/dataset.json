@@ -1,0 +1,23 @@
+{
+  "data_num": 3084,
+  "input_tokens": 4096,
+  "output_tokens": 2048,
+  "requested_prefix_fraction": 0.0,
+  "prefix_tokens": 0,
+  "block_aligned_prefix_fraction": 0.0,
+  "data_method": "mixed single-token words; shared prefix seed=1; suffix seed=1000003+request_index_start+request_index",
+  "request_index_start": 0,
+  "vocabulary_sha256": "3caa64c2b2fddcb7c73fd4c7642ddb241493353c8e9fce1f2a77034c8986dff8",
+  "prefix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "dataset_sha256": "900375b03bec0f3e3a4238c1ba9bfd37f54fbab1a9f112b41cb5c8f109fc44fd",
+  "first_question_sha256": "83fd8bb2d8ae0d37e50c3265ef31c5bb95168e47c0272cb41699024edf0bebfd",
+  "round_trip_tokenizer": "tokenizers.Tokenizer / add_special_tokens=False",
+  "path": "/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3/dataset.jsonl",
+  "hardware_cards": 64,
+  "max_running_per_dp": null,
+  "request_rate": 14.0,
+  "burstiness": 0.0,
+  "aisbench_pythonpath": "/workspace/experiment/tools/aisbench-rate14",
+  "topology": "dp32",
+  "p_service_tag": "dp32-noprefix-s32-h1088-rate14-r22"
+}

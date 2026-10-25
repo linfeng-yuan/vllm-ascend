@@ -1,0 +1,52 @@
+{
+  "case": "dp32-4k2k-c512-n3084-qps14-r3",
+  "benchmark_duration_seconds": 257.6560035,
+  "window_source": "paced-monitor.json",
+  "window_is_aisbench_steady": false,
+  "scope": "P metrics deltas over the PD test; elapsed AISBench measurement duration, excluding prefix warmup",
+  "capacity_limit_measured": false,
+  "uncached_tokens_definition": "With prefix queries: delta(queries)-delta(hits). Without local prefix caching: successful P requests times fixed input length. See per-P uncached_tokens_method.",
+  "total_successful_requests": 3084.0,
+  "total_uncached_query_tokens_per_second": 49026.856849465956,
+  "total_query_tokens_per_second": 0.0,
+  "steady_window_start": 1792943183.160142,
+  "steady_window_end": 1792943373.3742018,
+  "per_p": [
+    {
+      "node": 21,
+      "successful_requests": 1534.0,
+      "query_tokens": 0.0,
+      "hit_tokens": 0.0,
+      "uncached_query_tokens": 6283264.0,
+      "uncached_tokens_method": "prefix caching disabled: successful P requests times fixed input length",
+      "query_tokens_per_second": 0.0,
+      "uncached_query_tokens_per_second": 24386.251104760304,
+      "request_throughput": 5.953674586123121,
+      "p_request_ttft_avg_ms": 1119.9231864265232,
+      "p_queue_avg_ms": 26.898223754671807,
+      "steady_samples": 190,
+      "steady_running_mean": 4.647368421052631,
+      "steady_running_peak": 5.0,
+      "steady_waiting_mean": 0.18421052631578946,
+      "steady_waiting_peak": 1.0
+    },
+    {
+      "node": 23,
+      "successful_requests": 1550.0,
+      "query_tokens": 0.0,
+      "hit_tokens": 0.0,
+      "uncached_query_tokens": 6348800.0,
+      "uncached_tokens_method": "prefix caching disabled: successful P requests times fixed input length",
+      "query_tokens_per_second": 0.0,
+      "uncached_query_tokens_per_second": 24640.605744705656,
+      "request_throughput": 6.015772886891029,
+      "p_request_ttft_avg_ms": 1103.32388154922,
+      "p_queue_avg_ms": 37.643936250899586,
+      "steady_samples": 190,
+      "steady_running_mean": 4.731578947368421,
+      "steady_running_peak": 5.0,
+      "steady_waiting_mean": 0.2,
+      "steady_waiting_peak": 2.0
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "topology": "2P1D: P PP2/PCP8/EP8 x2, D DP32/EP32",
+  "hardware_cards": 64,
+  "p_pairs": [
+    [
+      21,
+      22
+    ],
+    [
+      23,
+      24
+    ]
+  ],
+  "d_nodes": [
+    25,
+    26,
+    27,
+    28
+  ],
+  "d_max_num_seqs": 32,
+  "d_max_num_batched_tokens": 512,
+  "d_hccl_buffsize": 1088,
+  "p_prefix_caching": false,
+  "d_prefix_caching": false,
+  "input_tokens": 4096,
+  "output_tokens": 2048,
+  "request_rate": 14,
+  "burstiness": 0,
+  "concurrency_limit": 512,
+  "data_num": 3084,
+  "service_tag": "dp32-noprefix-s32-h1088-rate14-r22",
+  "case": "dp32-4k2k-c512-n3084-qps14-r3",
+  "pacing_tool": "private AISBench copy; zero-burstiness division-by-zero fix; original image source unchanged",
+  "actual_client_peak_inflight": 329,
+  "actual_proxy_peak_inflight": 328,
+  "actual_send_rate": 14.00001436491115,
+  "validated": true,
+  "aisbench_stable_stage_available": false
+}

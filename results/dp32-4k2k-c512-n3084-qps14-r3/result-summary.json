@@ -1,0 +1,141 @@
+{
+  "case": "dp32-4k2k-c512-n3084-qps14-r3",
+  "mean_tpot_ms": 10.2,
+  "aisbench_output_tps": 24513.4284,
+  "hardware_cards": 64,
+  "average_output_tps_per_card": 383.02231875,
+  "average_output_tps_per_card_64": 383.02231875,
+  "report_metrics": {
+    "maximum_concurrency": 512,
+    "average_concurrency": 268.4543,
+    "total_requests": 3084,
+    "success_requests": 3084,
+    "failed_requests": 0,
+    "ttft_avg_ms": 1460.3,
+    "tpot_avg_ms": 10.2,
+    "input_tokens_per_second_per_card": 766.0446390625,
+    "output_tokens_per_second_per_card": 383.02231875,
+    "end_to_end_tokens_per_second_per_card": 1149.0669578125,
+    "qps": 11.9694,
+    "hardware_cards": 64,
+    "per_card_denominator": "all active P and D cards",
+    "end_to_end_definition": "(input tokens + output tokens) / benchmark duration / hardware cards"
+  },
+  "common_metrics_as_printed": {
+    "Benchmark Duration": {
+      "total": "257656.0035 ms"
+    },
+    "Total Requests": {
+      "total": 3084
+    },
+    "Failed Requests": {
+      "total": 0
+    },
+    "Success Requests": {
+      "total": 3084
+    },
+    "Concurrency": {
+      "total": 268.4543
+    },
+    "Max Concurrency": {
+      "total": 512
+    },
+    "Request Throughput": {
+      "total": "11.9694 req/s"
+    },
+    "Total Input Tokens": {
+      "total": 12632064
+    },
+    "Prefill Token Throughput": {
+      "total": "2804.8304 token/s"
+    },
+    "Total Generated Tokens": {
+      "total": 6316032
+    },
+    "Input Token Throughput": {
+      "total": "49026.8569 token/s"
+    },
+    "Output Token Throughput": {
+      "total": "24513.4284 token/s"
+    },
+    "Total Token Throughput": {
+      "total": "73540.2853 token/s"
+    }
+  },
+  "latency_metrics_as_printed": [
+    {
+      "Performance Parameters": "E2EL",
+      "Stage": "total",
+      "Average": "22428.3 ms",
+      "Min": "14330.3 ms",
+      "Max": "77830.0 ms",
+      "Median": "22129.9 ms",
+      "P75": "22347.1 ms",
+      "P90": "22602.0 ms",
+      "P99": "47187.6 ms",
+      "N": "3084"
+    },
+    {
+      "Performance Parameters": "TTFT",
+      "Stage": "total",
+      "Average": "1460.3 ms",
+      "Min": "519.4 ms",
+      "Max": "1912.0 ms",
+      "Median": "1469.0 ms",
+      "P75": "1548.3 ms",
+      "P90": "1597.4 ms",
+      "P99": "1696.1 ms",
+      "N": "3084"
+    },
+    {
+      "Performance Parameters": "TPOT",
+      "Stage": "total",
+      "Average": "10.2 ms",
+      "Min": "6.7 ms",
+      "Max": "37.3 ms",
+      "Median": "10.1 ms",
+      "P75": "10.2 ms",
+      "P90": "10.3 ms",
+      "P99": "22.4 ms",
+      "N": "3084"
+    },
+    {
+      "Performance Parameters": "ITL",
+      "Stage": "total",
+      "Average": "57.8 ms",
+      "Min": "0.0 ms",
+      "Max": "262.9 ms",
+      "Median": "58.8 ms",
+      "P75": "59.8 ms",
+      "P90": "61.2 ms",
+      "P99": "68.2 ms",
+      "N": "3084"
+    }
+  ],
+  "actual_detail_rows": 3084,
+  "request_success_values": {
+    "True": 3084
+  },
+  "input_token_counts": {
+    "4096": 3084
+  },
+  "output_token_counts": {
+    "2048": 3084
+  },
+  "valid_request_count": true,
+  "all_output_lengths_match": true,
+  "all_input_lengths_match": true,
+  "all_successful": true,
+  "all_d_dp_sampled": true,
+  "d_success_delta": 3084.0,
+  "d_generation_tokens_delta": 6316032.0,
+  "d_running_peak_simultaneous": 309.0,
+  "proxy_actual_inflight_peak": 328,
+  "common_result_path": "/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3/output/20261025_154530/performances/pro0813/pro0813-case.json",
+  "csv_result_path": "/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3/output/20261025_154530/performances/pro0813/pro0813-case.csv",
+  "reported_max_concurrency_is_configured_limit": true,
+  "actual_client_peak_inflight": 329,
+  "actual_send_rate": 14.00001436491115,
+  "aisbench_stable_stage_available": false,
+  "sustained_sending_running_mean": 297.9789473684211
+}

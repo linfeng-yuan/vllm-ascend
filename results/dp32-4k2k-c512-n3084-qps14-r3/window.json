@@ -1,0 +1,21 @@
+{
+  "started": 1792943130.4234703,
+  "ended": 1792943418.0019617,
+  "returncode": 0,
+  "command": [
+    "ais_bench",
+    "/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3/config.py",
+    "--mode",
+    "perf",
+    "--work-dir",
+    "/workspace/experiment/benchmarks/dp32-4k2k-c512-n3084-qps14-r3/output",
+    "--num-prompts",
+    "3084",
+    "--num-warmups",
+    "0",
+    "--debug"
+  ],
+  "concurrency": 512,
+  "data_num": 3084,
+  "request_rate": 14.0
+}

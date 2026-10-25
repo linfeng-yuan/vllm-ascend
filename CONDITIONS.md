@@ -172,3 +172,15 @@ AISBench 使用 24 并发、256 请求，每条输入 131072 / 输出 1024 token
 P 的实际负载吞吐另用正式窗口前后 `Δprefix_cache_queries_total − Δprefix_cache_hits_total` 除以 AISBench 全程时长计算，并记录各 P 的请求数、TTFT、排队时间及同窗 Running/Waiting。这是本轮 PD 请求下的未缓存输入处理速率，没有单独测量 P 的饱和上限。
 
 和前一轮 3P1D 相比，除了少一组 P，D 的 max-num-seqs 从 32 改为 16，数据后缀也不同；因此两组用于比较实际部署工作点，不将性能差异全部归因于 P 数量。配置见 `profiles/2p1d-pcp8-128k1k-p90-kv95.json`。
+
+## 4K/2K：DP32/EP32，限速复测
+
+服务恢复为首轮八机 2P1D：P=21/22、23/24，D=25～28；模型、镜像、代码、并行方式和本页最初 DP32 参数不变，P/D prefix caching 均关闭。实际启动参数和全部 34 个后端健康检查保存在 `launch-records/dp32-rate14/`。
+
+正式结果为 `dp32-4k2k-c512-n3084-qps14-r3`：AISBench 并发上限 512、请求数 3084、request_rate=14、traffic_cfg.burstiness=0，均匀间隔约 1/14 秒，use_timestamp=false。3084 为本轮明确指定值；数据方法、词表和输入输出长度沿用原 4K/2K 基准。每卡指标仍除以全部 64 卡。
+
+默认 AISBench 的匀速发送路径存在 `1/(request_rate*burstiness)` 除零错误。在 `/workspace/experiment/tools/aisbench-rate14/ais_bench` 建立独立副本，应用 `tools/aisbench-rate14.patch`，将该路径及回退等待的零 burstiness 行为修正为固定间隔。只为 AISBench 客户端及其子进程设置对应 PYTHONPATH；不修改镜像原文件、vLLM、vLLM-Ascend 或算子。副本和原文件 SHA256 见 `launch-records/dp32-rate14/aisbench-pacing-fix.json`。
+
+原 960/5760 限速尝试按后续要求中止并排空，在同一批后端上改为 512/3084。失败的零请求尝试和中止轮都不纳入正式性能结果。正式轮每秒采集全部 P/D 和 Proxy，按独立日志偏移保存 D 日志，结束后继续采集 12 秒。
+
+客户端时间戳从 AISBench 原始 SQLite time_points 数组读取，重建实际发送速率和在途请求；其首个时间点是请求开始，后续时间点为收到的响应块。TTFT 重算值与 AISBench 汇总一致。限速负载没有达到配置上限，原生稳态选择器无法找到 512 并发的窗口；使用全程 AISBench 性能，并另行记录从首发后 30 秒到末发之间的 Running/Waiting。该监控窗口不称为 AISBench 稳态。

@@ -105,7 +105,7 @@ def make_data(case, count, input_len, output_len, fraction, request_index_start=
     return first, prefix, metadata
 
 
-def make_config(case, concurrency, output_len):
+def make_config(case, concurrency, output_len, request_rate=0, burstiness=None):
     config = '''from ais_bench.benchmark.models import VLLMCustomAPI
 from ais_bench.benchmark.datasets import CustomDataset
 from ais_bench.benchmark.openicl.icl_prompt_template import PromptTemplate
@@ -114,7 +114,7 @@ from ais_bench.benchmark.openicl.icl_inferencer import GenInferencer
 from ais_bench.benchmark.openicl.icl_evaluator import AccEvaluator
 
 models = [dict(attr='service', type=VLLMCustomAPI, abbr='pro0813', path=MODEL_PATH,
-    model='dsv4-pro-0813', stream=True, request_rate=0, use_timestamp=False,
+    model='dsv4-pro-0813', stream=True, request_rate=REQUEST_RATE, use_timestamp=False,
     retry=1, api_key='', host_ip='197.33.45.1', host_port=18300,
     max_out_len=OUTPUT_LEN, batch_size=CONCURRENCY, trust_remote_code=True,
     generation_kwargs=dict(temperature=0, ignore_eos=True, add_special_tokens=False))]
@@ -125,7 +125,9 @@ datasets = [dict(abbr='pro0813-case', type=CustomDataset, path=DATASET_PATH,
     eval_cfg=dict(evaluator=dict(type=AccEvaluator), pred_role='BOT'))]
 summarizer = dict(attr='performance')
 '''
-    config = config.replace('MODEL_PATH', repr(MODEL)).replace('OUTPUT_LEN', str(output_len)).replace('CONCURRENCY', str(concurrency)).replace('DATASET_PATH', repr(str(case / 'dataset.jsonl')))
+    config = config.replace('MODEL_PATH', repr(MODEL)).replace('OUTPUT_LEN', str(output_len)).replace('CONCURRENCY', str(concurrency)).replace('REQUEST_RATE', repr(request_rate)).replace('DATASET_PATH', repr(str(case / 'dataset.jsonl')))
+    if burstiness is not None:
+        config=config.replace('    retry=1,','    traffic_cfg=dict(burstiness=%r),\n    retry=1,'%burstiness)
     (case / 'config.py').write_text(config)
 
 
@@ -165,6 +167,9 @@ def main():
     parser.add_argument('--topology', choices=['dp32', 'pcp8', 'pcp8-1p', 'pcp8-3p-remap', 'pcp8-2p-remap'], required=True)
     parser.add_argument('--concurrency', type=int, required=True)
     parser.add_argument('--data-num', type=int)
+    parser.add_argument('--request-rate', type=float, default=0)
+    parser.add_argument('--burstiness', type=float)
+    parser.add_argument('--aisbench-pythonpath')
     parser.add_argument('--request-index-start', type=int, default=0)
     parser.add_argument('--kv-usage-limit', type=float)
     parser.add_argument('--max-running-per-dp', type=int)
@@ -180,6 +185,8 @@ def main():
     a = parser.parse_args()
     assert a.kv_usage_limit is None or 0 < a.kv_usage_limit <= 1
     assert a.sample_interval > 0
+    assert 0 <= a.request_rate <= 64000
+    assert a.burstiness is None or a.burstiness >= 0
     case = ROOT / 'benchmarks' / a.case_id
     case.mkdir(parents=True, exist_ok=False)
     count = a.data_num if a.data_num is not None else 6 * a.concurrency
@@ -187,10 +194,13 @@ def main():
     first, prefix, metadata = make_data(case, count, a.input_len, a.output_len, a.prefix_fraction, a.request_index_start)
     metadata['hardware_cards'] = 32 if a.topology == 'pcp8-1p' else 48 if a.topology == 'pcp8-2p-remap' else 64
     metadata['max_running_per_dp'] = a.max_running_per_dp
+    metadata['request_rate'] = a.request_rate
+    metadata['burstiness'] = a.burstiness
+    metadata['aisbench_pythonpath'] = a.aisbench_pythonpath
     metadata['topology'] = a.topology
     metadata['p_service_tag'] = a.p_service_tag or a.service_tag
     (case / 'dataset.json').write_text(json.dumps(metadata, indent=2))
-    make_config(case, a.concurrency, a.output_len)
+    make_config(case, a.concurrency, a.output_len, a.request_rate, a.burstiness)
     cmd = ['ais_bench', str(case / 'config.py'), '--mode', 'perf', '--work-dir', str(case / 'output'), '--num-prompts', str(count), '--num-warmups', '0', '--debug']
     if a.dry_run:
         # The bundled AISBench debug workflow still sends traffic with --dry-run.
@@ -286,7 +296,10 @@ def main():
     started = time.time()
     try:
         with (case / 'aisbench.log').open('w') as stream:
-            proc = subprocess.Popen(cmd, stdout=stream, stderr=subprocess.STDOUT, env=dict(os.environ, TORCH_DEVICE_BACKEND_AUTOLOAD='0', NO_PROXY='*', TOKENIZERS_PARALLELISM='true', RAYON_NUM_THREADS='16'),start_new_session=True)
+            client_env=dict(os.environ, TORCH_DEVICE_BACKEND_AUTOLOAD='0', NO_PROXY='*', TOKENIZERS_PARALLELISM='true', RAYON_NUM_THREADS='16')
+            if a.aisbench_pythonpath:
+                client_env['PYTHONPATH']=a.aisbench_pythonpath+os.pathsep+os.environ.get('PYTHONPATH','')
+            proc = subprocess.Popen(cmd, stdout=stream, stderr=subprocess.STDOUT, env=client_env,start_new_session=True)
             if guard_events:
                 os.killpg(proc.pid,signal.SIGTERM)
             try:
@@ -297,7 +310,7 @@ def main():
                 raise
             result=proc
         ended = time.time()
-        (case / 'window.json').write_text(json.dumps({'started': started, 'ended': ended, 'returncode': result.returncode, 'command': cmd, 'concurrency': a.concurrency, 'data_num': count}, indent=2))
+        (case / 'window.json').write_text(json.dumps({'started': started, 'ended': ended, 'returncode': result.returncode, 'command': cmd, 'concurrency': a.concurrency, 'data_num': count, 'request_rate':a.request_rate}, indent=2))
         time.sleep(12)
         after = snapshot(case / 'after.json', ps + ds)
     finally:

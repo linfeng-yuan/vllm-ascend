@@ -1,0 +1,115 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "rank": 0,
+    "url": "http://197.33.45.1:18100",
+    "elapsed": 9.268600225448608,
+    "response": {
+      "id": "cmpl-84f215de385d32bc",
+      "object": "text_completion",
+      "created": 1792942335,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "P",
+    "node": 23,
+    "rank": 1,
+    "url": "http://197.33.47.1:18100",
+    "elapsed": 9.114219665527344,
+    "response": {
+      "id": "cmpl-895de23342a60688",
+      "object": "text_completion",
+      "created": 1792942336,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " A",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-pp2-ep-1ea68878",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4097,
+        "completion_tokens": 1,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  },
+  {
+    "role": "Proxy",
+    "elapsed": 1.3559558391571045,
+    "response": {
+      "id": "cmpl-570c0c2c-eeda-4be1-8100-8c0047079b26",
+      "object": "text_completion",
+      "created": 1792942338,
+      "model": "dsv4-pro-0813",
+      "choices": [
+        {
+          "index": 0,
+          "text": " Acknowledgment Acknowledgment Aide Aide Aide Aide Aide",
+          "logprobs": null,
+          "finish_reason": "length",
+          "stop_reason": null,
+          "token_ids": null,
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "routed_experts": null
+        }
+      ],
+      "service_tier": null,
+      "system_fingerprint": "vllm-0.30.0-dp32-ep-405d5225",
+      "usage": {
+        "prompt_tokens": 4096,
+        "total_tokens": 4112,
+        "completion_tokens": 16,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": null
+      },
+      "kv_transfer_params": null,
+      "ec_transfer_params": null,
+      "metrics": null
+    }
+  }
+]
