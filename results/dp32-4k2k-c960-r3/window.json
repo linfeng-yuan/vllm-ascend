@@ -1,0 +1,20 @@
+{
+  "started": 1792920216.3840103,
+  "ended": 1792920667.0656142,
+  "returncode": 0,
+  "command": [
+    "ais_bench",
+    "/workspace/experiment/benchmarks/dp32-4k2k-c960-r3/config.py",
+    "--mode",
+    "perf",
+    "--work-dir",
+    "/workspace/experiment/benchmarks/dp32-4k2k-c960-r3/output",
+    "--num-prompts",
+    "5760",
+    "--num-warmups",
+    "0",
+    "--debug"
+  ],
+  "concurrency": 960,
+  "data_num": 5760
+}

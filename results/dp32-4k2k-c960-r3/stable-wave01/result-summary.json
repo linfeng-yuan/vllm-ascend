@@ -1,0 +1,147 @@
+{
+  "case": "stable-wave01",
+  "mean_tpot_ms": 11.0,
+  "aisbench_output_tps": 29295.8876,
+  "average_output_tps_per_card_64": 457.74824375,
+  "common_metrics_as_printed": {
+    "Benchmark Duration": {
+      "stable": "335555.6298 ms"
+    },
+    "Total Requests": {
+      "stable": 4800
+    },
+    "Failed Requests": {
+      "stable": 0
+    },
+    "Success Requests": {
+      "stable": 4800
+    },
+    "Concurrency": {
+      "stable": 938.4729
+    },
+    "Max Concurrency": {
+      "stable": 960
+    },
+    "Request Throughput": {
+      "stable": "14.3046 req/s"
+    },
+    "Total Input Tokens": {
+      "stable": 19660800
+    },
+    "Prefill Token Throughput": {
+      "stable": "94.9732 token/s"
+    },
+    "Total Generated Tokens": {
+      "stable": 9830400
+    },
+    "Input Token Throughput": {
+      "stable": "58591.7751 token/s"
+    },
+    "Output Token Throughput": {
+      "stable": "29295.8876 token/s"
+    },
+    "Total Token Throughput": {
+      "stable": "87887.6627 token/s"
+    }
+  },
+  "latency_metrics_as_printed": [
+    {
+      "Performance Parameters": "E2EL",
+      "Stage": "stable",
+      "Average": "65606.2 ms",
+      "Min": "60073.0 ms",
+      "Max": "130815.8 ms",
+      "Median": "64920.3 ms",
+      "P75": "65336.9 ms",
+      "P90": "66480.8 ms",
+      "P99": "91750.8 ms",
+      "N": "4800"
+    },
+    {
+      "Performance Parameters": "TTFT",
+      "Stage": "stable",
+      "Average": "43128.0 ms",
+      "Min": "41651.7 ms",
+      "Max": "51391.7 ms",
+      "Median": "42917.6 ms",
+      "P75": "43249.1 ms",
+      "P90": "43878.6 ms",
+      "P99": "48768.3 ms",
+      "N": "4800"
+    },
+    {
+      "Performance Parameters": "TPOT",
+      "Stage": "stable",
+      "Average": "11.0 ms",
+      "Min": "8.7 ms",
+      "Max": "42.8 ms",
+      "Median": "10.7 ms",
+      "P75": "10.8 ms",
+      "P90": "11.0 ms",
+      "P99": "23.8 ms",
+      "N": "4800"
+    },
+    {
+      "Performance Parameters": "ITL",
+      "Stage": "stable",
+      "Average": "62.1 ms",
+      "Min": "0.0 ms",
+      "Max": "642.4 ms",
+      "Median": "62.3 ms",
+      "P75": "63.3 ms",
+      "P90": "65.0 ms",
+      "P99": "70.1 ms",
+      "N": "4800"
+    }
+  ],
+  "actual_detail_rows": 5760,
+  "request_success_values": {
+    "True": 5760
+  },
+  "input_token_counts": {
+    "4096": 5760
+  },
+  "output_token_counts": {
+    "2048": 5760
+  },
+  "valid_request_count": true,
+  "all_output_lengths_match": true,
+  "all_input_lengths_match": true,
+  "all_successful": true,
+  "all_d_dp_sampled": true,
+  "d_success_delta": 5760.0,
+  "d_generation_tokens_delta": 11796480.0,
+  "d_running_peak_simultaneous": 345.0,
+  "proxy_actual_inflight_peak": 960,
+  "common_result_path": "/workspace/experiment/benchmarks/dp32-4k2k-c960-r3/stable-wave01/output/20261025_092336/performances/pro0813/pro0813-case.json",
+  "csv_result_path": "/workspace/experiment/benchmarks/dp32-4k2k-c960-r3/stable-wave01/output/20261025_092336/performances/pro0813/pro0813-case.csv",
+  "statistic_scope": "stable",
+  "wave_offset": 0.1,
+  "source_case": "dp32-4k2k-c960-r3",
+  "stable_window": {
+    "original_wave_offset": 0.02,
+    "effective_wave_offset": 0.1,
+    "client_max_concurrency": 960,
+    "client_concurrency_tolerance_threshold": 864,
+    "absolute_start": 2180991.56938452,
+    "absolute_end": 2181327.12501427,
+    "duration_seconds": 335.55562975024804
+  },
+  "selected_requests": 4800,
+  "steady_running": {
+    "window_start_unix_estimate": 1792920251.7926142,
+    "window_end_unix_estimate": 1792920587.348244,
+    "clock_offset_unix_minus_perf_counter": 1790739260.2232296,
+    "clock_alignment": "same-host monotonic-to-wall offset measured during analysis; 1-second metrics sampling",
+    "samples": 335,
+    "dp_count": 32,
+    "d_total_running_mean": 325.6626865671642,
+    "per_dp_running_mean": 10.176958955223881,
+    "d_total_running_median": 330.0,
+    "d_total_running_peak": 344.0,
+    "full_test_max_e2el_ms": 130815.8,
+    "stable_duration_ms": 335555.62975024804,
+    "aisbench_doc_duration_confidence_condition_met": false
+  },
+  "original_monitor_fields_scope": "whole source test, not only the stable stage"
+}

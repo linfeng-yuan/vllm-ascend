@@ -1,0 +1,32 @@
+{
+  "active_client_gt0": {
+    "samples": 421,
+    "D_total_mean": 304.8859857482185,
+    "per_DP_mean": 9.527687054631828,
+    "DP_mean_min": 9.30166270783848,
+    "DP_mean_max": 9.703087885985749,
+    "D_total_median": 330.0,
+    "D_total_peak": 345.0,
+    "mean_proxy_inflight": 865.9904988123516
+  },
+  "client_ge90pct": {
+    "samples": 352,
+    "D_total_mean": 320.46022727272725,
+    "per_DP_mean": 10.014382102272727,
+    "DP_mean_min": 9.798295454545455,
+    "DP_mean_max": 10.142045454545455,
+    "D_total_median": 330.0,
+    "D_total_peak": 344.0,
+    "mean_proxy_inflight": 958.9914772727273
+  },
+  "last60s_active": {
+    "samples": 60,
+    "D_total_mean": 234.81666666666666,
+    "per_DP_mean": 7.338020833333333,
+    "DP_mean_min": 6.933333333333334,
+    "DP_mean_max": 7.883333333333334,
+    "D_total_median": 331.5,
+    "D_total_peak": 345.0,
+    "mean_proxy_inflight": 357.7
+  }
+}

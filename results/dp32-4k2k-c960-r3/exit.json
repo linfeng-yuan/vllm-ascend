@@ -1,0 +1,6 @@
+{
+  "returncode": 0,
+  "success_delta_total": 5760.0,
+  "expected_requests": 5760,
+  "all_dp_have_samples": true
+}

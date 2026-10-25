@@ -1,0 +1,120 @@
+{
+  "case": "1p1d-pcp8-4k2k-c128-r2",
+  "mean_tpot_ms": 15.3,
+  "aisbench_output_tps": 6692.6074,
+  "hardware_cards": 32,
+  "average_output_tps_per_card": 209.14398125,
+  "average_output_tps_per_card_32": 209.14398125,
+  "common_metrics_as_printed": {
+    "Benchmark Duration": {
+      "total": "235015.129 ms"
+    },
+    "Total Requests": {
+      "total": 768
+    },
+    "Failed Requests": {
+      "total": 0
+    },
+    "Success Requests": {
+      "total": 768
+    },
+    "Concurrency": {
+      "total": 111.6396
+    },
+    "Max Concurrency": {
+      "total": 128
+    },
+    "Request Throughput": {
+      "total": "3.2679 req/s"
+    },
+    "Total Input Tokens": {
+      "total": 3145728
+    },
+    "Prefill Token Throughput": {
+      "total": "1425.2441 token/s"
+    },
+    "Total Generated Tokens": {
+      "total": 1572864
+    },
+    "Input Token Throughput": {
+      "total": "13385.2149 token/s"
+    },
+    "Output Token Throughput": {
+      "total": "6692.6074 token/s"
+    },
+    "Total Token Throughput": {
+      "total": "20077.8223 token/s"
+    }
+  },
+  "latency_metrics_as_printed": [
+    {
+      "Performance Parameters": "E2EL",
+      "Stage": "total",
+      "Average": "34162.8 ms",
+      "Min": "26052.9 ms",
+      "Max": "92182.3 ms",
+      "Median": "32413.1 ms",
+      "P75": "32959.0 ms",
+      "P90": "40321.7 ms",
+      "P99": "71132.6 ms",
+      "N": "768"
+    },
+    {
+      "Performance Parameters": "TTFT",
+      "Stage": "total",
+      "Average": "2873.9 ms",
+      "Min": "645.3 ms",
+      "Max": "17340.5 ms",
+      "Median": "1737.9 ms",
+      "P75": "1965.9 ms",
+      "P90": "7563.7 ms",
+      "P99": "16466.6 ms",
+      "N": "768"
+    },
+    {
+      "Performance Parameters": "TPOT",
+      "Stage": "total",
+      "Average": "15.3 ms",
+      "Min": "12.3 ms",
+      "Max": "44.1 ms",
+      "Median": "15.0 ms",
+      "P75": "15.1 ms",
+      "P90": "15.3 ms",
+      "P99": "33.9 ms",
+      "N": "768"
+    },
+    {
+      "Performance Parameters": "ITL",
+      "Stage": "total",
+      "Average": "86.1 ms",
+      "Min": "0.0 ms",
+      "Max": "105.5 ms",
+      "Median": "87.1 ms",
+      "P75": "89.3 ms",
+      "P90": "91.4 ms",
+      "P99": "97.0 ms",
+      "N": "768"
+    }
+  ],
+  "actual_detail_rows": 768,
+  "request_success_values": {
+    "True": 768
+  },
+  "input_token_counts": {
+    "4096": 768
+  },
+  "output_token_counts": {
+    "2048": 768
+  },
+  "valid_request_count": true,
+  "all_output_lengths_match": true,
+  "all_input_lengths_match": true,
+  "all_successful": true,
+  "all_d_dp_sampled": true,
+  "d_success_delta": 768.0,
+  "d_generation_tokens_delta": 1572864.0,
+  "d_running_peak_simultaneous": 128.0,
+  "proxy_actual_inflight_peak": 128,
+  "common_result_path": "/workspace/experiment/benchmarks/1p1d-pcp8-4k2k-c128-r2/output/20261025_104639/performances/pro0813/pro0813-case.json",
+  "csv_result_path": "/workspace/experiment/benchmarks/1p1d-pcp8-4k2k-c128-r2/output/20261025_104639/performances/pro0813/pro0813-case.csv"
+}
