@@ -1,0 +1,26 @@
+[
+  {
+    "role": "P",
+    "node": 21,
+    "rank": 0,
+    "url": "http://197.33.45.1:18100",
+    "status": "reset endpoint unavailable; inputs unused in this P lifetime",
+    "http_status": 404
+  },
+  {
+    "role": "P",
+    "node": 25,
+    "rank": 1,
+    "url": "http://197.33.49.1:18100",
+    "status": "reset endpoint unavailable; inputs unused in this P lifetime",
+    "http_status": 404
+  },
+  {
+    "role": "P",
+    "node": 27,
+    "rank": 2,
+    "url": "http://197.33.51.1:18100",
+    "status": "reset endpoint unavailable; inputs unused in this P lifetime",
+    "http_status": 404
+  }
+]

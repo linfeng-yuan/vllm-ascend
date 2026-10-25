@@ -1,0 +1,74 @@
+{
+  "time": 1792930708.7589717,
+  "tag": "3p1d-pcp8-prefix-stock-s32-h1088-r18",
+  "ready": 5,
+  "expected_endpoints": 5,
+  "kv_capacity_ranks": 2,
+  "d_total_logical_kv_tokens": 2018297,
+  "logs": [
+    {
+      "log": "node23-d-rank0.log",
+      "bytes": 154607,
+      "updated": 1792930857.8912401,
+      "loading_shards": 66,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1009352
+      ],
+      "kv_tokens": 1009352,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(APIServer pid=108) INFO:     Waiting for application startup.",
+        "(APIServer pid=108) INFO:     Application startup complete."
+      ]
+    },
+    {
+      "log": "node24-d-rank1.log",
+      "bytes": 135997,
+      "updated": 1792930853.5963676,
+      "loading_shards": null,
+      "loading_completed": true,
+      "kv_tokens_messages": [
+        1008945
+      ],
+      "kv_tokens": 1008945,
+      "graph_finished": true,
+      "fatal_error_count": 0,
+      "errors": [],
+      "tail": [
+        "(EngineCore_DP1 pid=168) WARNING 10-25 12:18:24 [utils.py:1524] For deepseek_v4 model, block size should be 32, 64 or 128. Setting block size to 32 for better performance.",
+        "(EngineCore_DP1 pid=168) INFO 10-25 12:18:24 [platform.py:1464] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True"
+      ]
+    }
+  ],
+  "health": [
+    {
+      "node": 21,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 25,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 27,
+      "port": 18100,
+      "status": 200
+    },
+    {
+      "node": 23,
+      "port": 18200,
+      "status": 200
+    },
+    {
+      "node": 24,
+      "port": 18200,
+      "status": 200
+    }
+  ],
+  "phase": "ready"
+}

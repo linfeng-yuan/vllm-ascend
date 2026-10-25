@@ -133,3 +133,20 @@ P 的 max-num-seqs=16、max-num-batched-tokens=8192、max-model-len=1048576、GP
 输入 token 吞吐包含命中缓存的输入 tokens。仍按 AISBench 整体 Input/Output/Total Token Throughput 除以 64 计算三项单卡吞吐，不能把输入 token 吞吐直接当作 P 的独立计算吞吐。
 
 16 并发 / 96 请求的两次运行作为预跑保存于 `results/pilots/`。正式对照使用 64 并发 / 256 请求。
+
+## 128K/1K：D max-num-seqs=32 复测
+
+拓扑仍为上述 3P1D、64 卡，三个 P 保持运行和 prefix caching 开启。只重启 23/24 的两个 D API，改动如下：
+
+| 项目 | 前一轮 | 本轮 |
+|---|---:|---:|
+| D max-num-seqs | 8 | 32 |
+| D HCCL_BUFFSIZE | 272 | 1088 |
+| 双 buffer 合计 MB | 544 | 2176 |
+| D0 启动打印 KV tokens | 1169326 | 1009352 |
+| D1 启动打印 KV tokens | 1168851 | 1008945 |
+| 请求后缀 index 起点 | 1000 | 2000 |
+
+其他服务参数不变，继续使用原镜像源码和算子。客户端固定 64 并发、256 请求，逐条输入/输出为 131072/1024 tokens，90% 固定文本前缀对应实际 87.5007% 缓存命中。本轮未继续测试 96%。
+
+重启前核对本实验容器归属与在途请求，向上一轮 D API 发送 SIGTERM 后再停止本实验 D 容器；不操作其他容器、驱动或网络。启动后确认五个后端健康、两台 D 图捕获完成、Proxy 健康和 PD 请求预热通过。逐进程命令、源码核对和健康检查保存在 `launch-records/3p1d-s32/`。
