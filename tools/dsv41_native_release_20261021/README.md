@@ -1,6 +1,8 @@
 # DSV4.1 Ascend950 ARM 算子修复与交接
 
-本目录交付 2026-10-21 在 ARM64 环境构建的 Python 3.11 / 3.12 两组包、可重建源码、源码补丁和验证记录。2026-10-26 发布时，已重新核对交付包与原构建目录的 SHA256。
+本目录交付 2026-10-21 在 ARM64 环境构建的 Python 3.11 / 3.12 两组包所用的可重建源码、源码补丁和验证记录。2026-10-26 发布时，已重新核对交付包与原构建目录的 SHA256。
+
+源码材料已上传；四个 wheel 经代理上传时，整包和单文件推送均发生连接中断，因此本分支先不包含 wheel。原始包保留在 45.107 的 `dsv41_workspace_verify_20261019` 容器和宿主机共享目录 `/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/`。现场可按下文下载官方 DSL wheel，并分别构建 Python 3.11 / 3.12 的算子包。
 
 ## 解决的问题
 
@@ -37,14 +39,14 @@ QSLI 的 staging 预留容量不会增加实际启动的 worker 数。相对按�
 - `patches/recipes_native_release.patch`：将构建输入加入 cann-recipes-infer 的完整补丁。
 - `patches/operator_fixes.patch`：相对固定 cannbot-dsl 源码版本的修改，便于逐项审阅。
 - `patches/pr181-source.patch`：PR181 原始补丁。
-- `wheels/`：以下四个原始 wheel；每组必须使用相同的 Python ABI。
+- `WHEEL_SHA256SUMS`：以下四个原始 wheel 的校验值；wheel 本身未上传，每组必须使用相同的 Python ABI。
 - `evidence/`：上游版本、源文件 hash、wheel 来源、构建环境和原始验证摘要。
 - `SHA256SUMS`：本目录交付文件校验值。
 
 | Python / 架构 | 官方 DSL 编译器与运行时 | 本次构建的算子包 |
 | --- | --- | --- |
-| CPython 3.11 / aarch64 | [cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl](wheels/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl) | [cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl](wheels/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl) |
-| CPython 3.12 / aarch64 | [cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl](wheels/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl) | [cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl](wheels/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl) |
+| CPython 3.11 / aarch64 | `cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl` | `cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl` |
+| CPython 3.12 / aarch64 | `cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl` | `cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl` |
 
 当前打包器的 distribution 名为 `cannbot-arena-net`，导入名为 `ops`；沿用其 0.3.0 版本并追加修复标识，没有重新命名成旧的 `cannbot-arena-net-ops==0.1.0`。DSL 的 distribution 名为 `cannbot-dsl`，导入名为 `cannbotdsl`。
 
@@ -62,6 +64,8 @@ QSLI 的 staging 预留容量不会增加实际启动的 worker 数。相对按�
 
 ```bash
 sha256sum -c SHA256SUMS
+# 从 45.107 取得原始 wheels/ 目录后再执行：
+sha256sum -c WHEEL_SHA256SUMS
 python3 -m zipfile -e native_build.zip .
 # 先停止将要更换包的服务；填写该服务实际使用的 Python 路径。
 bash native_build/install-wheels.sh /path/to/service/python "$PWD/wheels"
@@ -72,6 +76,15 @@ bash native_build/install-wheels.sh /path/to/service/python "$PWD/wheels"
 ## 现场重建步骤
 
 ### 1. 准备源码和构建环境
+
+先克隆交付分支，进入本目录并校验源码材料：
+
+```bash
+git clone --branch codex/dsv41-native-release-20261026 --single-branch \
+  https://github.com/linfeng-yuan/vllm-ascend.git
+cd vllm-ascend/tools/dsv41_native_release_20261021
+sha256sum -c SHA256SUMS
+```
 
 完整源码已在 `native_build.zip`，解压后可直接构建。若需将修改集成回 recipes 仓：
 
@@ -88,7 +101,30 @@ cd models/deepseek_v4_1/native_build
 
 完整 `ds41` 组的 QW / K 导出会读取 NPU 设备属性，构建容器需要能看到 NPU。构建工作目录和输出目录应放在支持原子目录发布的本地文件系统。保留原来的七算子组：MQSMLA、QLI、QSLI、Indexer QW、Indexer K、Engram gate、Attention epilogue。
 
-### 2. 分别构建 Python 3.11 / 3.12
+### 2. 下载并校验两个官方 DSL wheel
+
+在本目录执行以下命令，按保存的官方地址下载，校验通过后才写入 `wheels/`。网络需要代理时，先在当前 shell 配置代理。此步骤下载官方 DSL；算子包使用下一步的源码现场构建。
+
+```bash
+python3 - <<'PY'
+import hashlib
+import json
+from pathlib import Path
+from urllib.request import urlopen
+
+destination = Path("wheels")
+destination.mkdir(exist_ok=True)
+for entry in json.loads(Path("evidence/dsl_wheel_provenance.json").read_text()):
+    with urlopen(entry["url"], timeout=120) as response:
+        data = response.read()
+    if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+        raise RuntimeError("SHA256 mismatch: " + entry["file"])
+    (destination / entry["file"]).write_bytes(data)
+    print("Verified:", entry["file"])
+PY
+```
+
+### 3. 分别构建 Python 3.11 / 3.12
 
 若使用本目录的源码压缩包，从本目录执行：
 
@@ -114,7 +150,7 @@ bash run-build.sh --group ds41 \
 
 DSL wheel 也可按 `evidence/dsl_wheel_provenance.json` 中的官方地址和 SHA256 获取。源代码许可证保存在源码压缩包内，算子 wheel 同样包含许可证。
 
-### 3. 安装后验证
+### 4. 安装后验证
 
 使用服务对应的 Python，在解压后的 `native_build/` 目录运行：
 
@@ -138,4 +174,4 @@ python tests/run_kernel_precision.py --cores 32 --report /tmp/ds41-32.json
 - 另有 cp311、32 核的两轮九场景性能 A/B：设备侧变化均在正负 1% 内，Python 纯算子调用耗时中位数约增加 1.2%。这评估整个 PR181，不能单独归因于 staging 预留；见 `evidence/performance_32core_20261021.txt`。
 - 未完成整模型 DeepSWE 精度、vLLM 吞吐 / TTFT / TPOT 对照、物理 28 核性能 A/B，以及 cp312 性能 A/B。
 
-本分支保存可安装的发布材料。后续镜像需要显式安装这些 wheel 或采用这份构建源码；其他官方镜像 tag 不保证包含这些修改。
+本分支保存可重建的发布材料。后续镜像需要显式安装原始 wheel、现场构建的 wheel，或采用这份构建源码；其他官方镜像 tag 不保证包含这些修改。
