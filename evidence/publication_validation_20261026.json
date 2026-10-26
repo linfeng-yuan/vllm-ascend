@@ -28,10 +28,11 @@
     "cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl": "bea7e6a1f23e5ace930cf43e7e00a7736aa969e9b4ffb610fdf35f5403feb6bb"
   },
   "github_publication": {
-    "mode": "source_and_build_materials",
-    "wheels_published": false,
-    "reason": "Combined and individual wheel Git pushes failed with RPC SSL disconnects; the source-only push succeeded.",
-    "original_wheels_location": "/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/"
+    "mode": "source_and_compressed_wheel_parts",
+    "wheels_published": true,
+    "reason": "Direct and individual wheel pushes failed with RPC SSL disconnects. Compressed parts are published individually and restored with SHA256 verification.",
+    "original_wheels_location": "/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/",
+    "wheel_representation": "XZ archives split into parts of at most 768 KiB"
   },
   "standalone_branch": {
     "layout": "Release material at repository root, with native_build sources expanded",
@@ -43,5 +44,10 @@
       "passed": 5,
       "failed": 0
     }
+  },
+  "wheel_archive_restoration": {
+    "original_wheels_verified": 4,
+    "part_size_bytes": 786432,
+    "parts": 54
   }
 }

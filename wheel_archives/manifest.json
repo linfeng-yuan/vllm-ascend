@@ -1,0 +1,328 @@
+{
+  "format": "xz-split-v1",
+  "part_size": 786432,
+  "wheels": [
+    {
+      "file": "cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl",
+      "wheel_bytes": 6346568,
+      "xz_bytes": 6257296,
+      "xz_sha256": "52501fc067c427137b84b3262426ca439a1c3c107aae740b7d7cf37d7837bec7",
+      "wheel_sha256": "28691280da199b46deb5034af99b2e3b67094cd903a7be27bf49b8536cbd0449",
+      "saved_percent": 1.41,
+      "zip_inner_uncompressed": 19985012,
+      "zip_inner_compressed": 6315412,
+      "abi": "cp311",
+      "parts": [
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part000",
+          "bytes": 786432,
+          "sha256": "599216cb3fa74d985e3443c256ed69b4a5b6a7300200311ecbebcd3afec9171c"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part001",
+          "bytes": 786432,
+          "sha256": "4d9d81e9f9aab03b28ccb552fc4ad3e8019f6ac0d9ff07687a7445b884e648bc"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part002",
+          "bytes": 786432,
+          "sha256": "435fa3a7f5ed997635af79225945f714bad0418b55e033e72fb9fbdc56898edf"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part003",
+          "bytes": 786432,
+          "sha256": "7208b03694415b46300584f9bb5d045208ca2dac3492ff1b783e290c7302d2a6"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part004",
+          "bytes": 786432,
+          "sha256": "a3fedf7544f8f62bcd7e8f6de9ba627650ab892362cbcca30755c474c996d083"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part005",
+          "bytes": 786432,
+          "sha256": "560269ef6a3e895beb547741fe23729afa187d5631cd82555bc14b094d67ee77"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part006",
+          "bytes": 786432,
+          "sha256": "6f0321f5a18a79950bbc67b19daf721eb0d6af6d0b4c9ccc002c08f524b56b3c"
+        },
+        {
+          "file": "cp311/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl.xz.part007",
+          "bytes": 752272,
+          "sha256": "e7609e2c358eda7cc89efb65047aca4fbfe02df38699b443975ba28acf710331"
+        }
+      ]
+    },
+    {
+      "file": "cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "wheel_bytes": 6347749,
+      "xz_bytes": 6259628,
+      "xz_sha256": "db3f041aeb5cb13480f91786ef15c33b5683ef5d1579f4272dd7c18b8cbb9a27",
+      "wheel_sha256": "bea7e6a1f23e5ace930cf43e7e00a7736aa969e9b4ffb610fdf35f5403feb6bb",
+      "saved_percent": 1.39,
+      "zip_inner_uncompressed": 20050612,
+      "zip_inner_compressed": 6316593,
+      "abi": "cp312",
+      "parts": [
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part000",
+          "bytes": 786432,
+          "sha256": "433dca5d7df63b14721f1a177efc5ca167d93d59b96840d2b2860aaf647dfcb2"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part001",
+          "bytes": 786432,
+          "sha256": "56f3d87de333b4331337b288b90cae1cbd4ba3850d2e61eb45a4428b165c30bc"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part002",
+          "bytes": 786432,
+          "sha256": "51c3e87c8707977c321060dcdd2b8ee72553064eaf7651626f0470b0bc3c9e1d"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part003",
+          "bytes": 786432,
+          "sha256": "9148235bd2f18983800573fc3d598b96662f020a9ee0f2ad24caf2ccff13ac71"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part004",
+          "bytes": 786432,
+          "sha256": "10a81c4a0b6df8768a1902bfaf52781d86815083fafb7780ee0a76ec2851c915"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part005",
+          "bytes": 786432,
+          "sha256": "fa086c5f6555984e00cd4d4ee905a964d826b10e79f8b46721ec39bf3eea3eb1"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part006",
+          "bytes": 786432,
+          "sha256": "3834db97c254533a2ca7a3501f988a1f9515638fe7f05c77d5eafbf8ca25acd2"
+        },
+        {
+          "file": "cp312/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl.xz.part007",
+          "bytes": 754604,
+          "sha256": "27fc0dd4f6cf25af568befd9d410664ba0b0cd1598f549dc42ea191c9085d046"
+        }
+      ]
+    },
+    {
+      "file": "cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl",
+      "wheel_bytes": 16836601,
+      "xz_bytes": 14377864,
+      "xz_sha256": "f7637aeaee3ca4281ffd814459a57bb91f05cc85fdd9c75c40ea374d4e3dfc2c",
+      "wheel_sha256": "7ad4357e707f6a05e058358cacbbc8a0de575054e3c80206a49a3a4cb01e2e35",
+      "saved_percent": 14.6,
+      "zip_inner_uncompressed": 72046259,
+      "zip_inner_compressed": 16702661,
+      "abi": "cp311",
+      "parts": [
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part000",
+          "bytes": 786432,
+          "sha256": "54a59a1d709dc8e28c7710f1112ade09f14c2f4745f672f33c26b686aeff2a71"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part001",
+          "bytes": 786432,
+          "sha256": "9d0f39144cf9ee6c406715916447b812c215b633c507e13622c5e2fbcabb8e59"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part002",
+          "bytes": 786432,
+          "sha256": "4dc18b19f1eca48b9e2ab162147617f0bc5083658a63864aeafc7fb95267036c"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part003",
+          "bytes": 786432,
+          "sha256": "de95956647d3fbcc7ef1bb24ea5b3af411d0bb03d86c6fbfe862004399e96bc4"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part004",
+          "bytes": 786432,
+          "sha256": "9676f6fa68530273688c0e270d4cbc6c355c44fa23768844773162b46abe3174"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part005",
+          "bytes": 786432,
+          "sha256": "2ec2e186881af68fb294a5bff5ace39074acf66b2000094e008c959db6758fe0"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part006",
+          "bytes": 786432,
+          "sha256": "968c36da63e3757fd5a23f3e2c7a0d0755dbec95fea5dd27542e4b70e7e5983a"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part007",
+          "bytes": 786432,
+          "sha256": "8424135f5f309f0ea4b141e69efc7199e387fbd34dc4a2fe8103282938a7874d"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part008",
+          "bytes": 786432,
+          "sha256": "d0fe32bfb2f6cf801491558edd3609d85cfdacb17fdf7e87e4dad9e7e5eb89d4"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part009",
+          "bytes": 786432,
+          "sha256": "f82fd5f9d6944c21e4d0b8347180d9357d094d9297de9223bc403d8c3fe292f1"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part010",
+          "bytes": 786432,
+          "sha256": "cf6ae441f9215efe4293431a21eaf8130825dfdf46fa46f290bdadfb109c7ef8"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part011",
+          "bytes": 786432,
+          "sha256": "84bfe8cb08774d8750b0665178ce142cfb1703d5c2ca9a7974e4238a8eec82e9"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part012",
+          "bytes": 786432,
+          "sha256": "8209e0a8779068472c1e3308bef9b3ee33b2933593604f70d9003d967d408f61"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part013",
+          "bytes": 786432,
+          "sha256": "ffe5280956b9894dfd37eee9c58a0a56d845c6907cd5a39317583e56e4f58d76"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part014",
+          "bytes": 786432,
+          "sha256": "b9eaa5165f0174d8783e1d72d1d8a5af7000f3dc702053b271b2b80591d98b77"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part015",
+          "bytes": 786432,
+          "sha256": "617b809fa792966f5bbdf42e3224ac856eca9e6c6307f6ecbd8d340935b0c0ce"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part016",
+          "bytes": 786432,
+          "sha256": "49484757cfb9eba507e6765459e602c923560af37b257f2932409d1d0ea4941b"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part017",
+          "bytes": 786432,
+          "sha256": "36473e3bca2a83d2f00cf1eddc1e6f0efec24fc0d94b8a0dee7641ba9b6b411f"
+        },
+        {
+          "file": "cp311/cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl.xz.part018",
+          "bytes": 222088,
+          "sha256": "c54c80f003b7120d9e22119eb4a335dd53c58e83a636dbd6f8e5f9960df18da1"
+        }
+      ]
+    },
+    {
+      "file": "cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl",
+      "wheel_bytes": 16836793,
+      "xz_bytes": 14377032,
+      "xz_sha256": "242870c95f629e0045d89d27f77ef5c0f7b2b171c04f856e2a3e6c5d56186df2",
+      "wheel_sha256": "c9d637d6db8704dee7ab0aa906dc1ed9fef10db6a43fbf35511ca02606fe186b",
+      "saved_percent": 14.61,
+      "zip_inner_uncompressed": 72046259,
+      "zip_inner_compressed": 16702853,
+      "abi": "cp312",
+      "parts": [
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part000",
+          "bytes": 786432,
+          "sha256": "15628b6b6f980e4b0524579733aee32c1182b1d7366e9c02825b1490c5ba4422"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part001",
+          "bytes": 786432,
+          "sha256": "653a8d5bc88e8ee50c5dcfb8464a0ef6817b38a8b7472387093a623e8de87b89"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part002",
+          "bytes": 786432,
+          "sha256": "3fb53a9a6f261b9d71c94160a00c04be345fc78596b0bc447247f0c3008fd2cd"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part003",
+          "bytes": 786432,
+          "sha256": "fcd88bad0db534ef2fcf658010a036e8ff80e45a5df33bbb472db78428f27897"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part004",
+          "bytes": 786432,
+          "sha256": "61cdf3a9b5b54184a949b6ac95ab37f2db43f43a8edd5585041a1efabbda7e01"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part005",
+          "bytes": 786432,
+          "sha256": "23038abbd4f62df44b39c1f9116a61bc3f36bc62e00273e391ee0ea977454da5"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part006",
+          "bytes": 786432,
+          "sha256": "317185f8b69803c723166bac5b916d83f991a104c3a4685cdb54dae8645a9eaf"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part007",
+          "bytes": 786432,
+          "sha256": "46ec73bd8f2b61dae9ad6b8e2ea33600fe5e456a09935525cc462a16a4d9a359"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part008",
+          "bytes": 786432,
+          "sha256": "3a011e18641e83c296f7597cfc3d97b0e4df7d9ea3a758099c05111b30375ad4"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part009",
+          "bytes": 786432,
+          "sha256": "4f4b76b10ab0caab0de39717e3fcec3ab80ec3b2bca9e70fcc58030758cf29e1"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part010",
+          "bytes": 786432,
+          "sha256": "86b6e6221adced77e977cc9d476a2102960ab8ffe5f955d5608f50c5c70db773"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part011",
+          "bytes": 786432,
+          "sha256": "226d2ea1504a9477264c123364cc4af039d91201882f551d035692cefbc1f8f7"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part012",
+          "bytes": 786432,
+          "sha256": "10d73f3608b25c576490a7358eefcc5faf2883180d8ba4339a071c3b435cc592"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part013",
+          "bytes": 786432,
+          "sha256": "922b7b3ce39fe075aff34df054231796019b67f9a41df327310a24a0eb603c05"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part014",
+          "bytes": 786432,
+          "sha256": "1e649459599222a0652d83eef9e7d713f176983ef8a26f2db456a41069e5a486"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part015",
+          "bytes": 786432,
+          "sha256": "5a1fc132cfb5a9faecec0f60b6958dcb8cfc39c84669e6419ad16e2c18fe974b"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part016",
+          "bytes": 786432,
+          "sha256": "23a294567b4aa9c400489c846d89623d0652886506fc4da325c4ef7616df8872"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part017",
+          "bytes": 786432,
+          "sha256": "b43cc3b380bb9f6e49fdcfa67e86be44c0783215774429e9de556bf581eac7e0"
+        },
+        {
+          "file": "cp312/cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl.xz.part018",
+          "bytes": 221256,
+          "sha256": "0f2301131d3b455488844c988bea10e7090dc605a8a903efbd071f5d5b7beb9e"
+        }
+      ]
+    }
+  ]
+}

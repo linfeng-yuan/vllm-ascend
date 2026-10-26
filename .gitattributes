@@ -5,3 +5,4 @@
 *.patch -whitespace
 native_build/** -text -whitespace
 LICENSE -whitespace
+*.part[0-9][0-9][0-9] -diff -text

@@ -4,7 +4,7 @@
 
 本目录交付 2026-10-21 在 ARM64 环境构建的 Python 3.11 / 3.12 两组包所用的可重建源码、源码补丁和验证记录。2026-10-26 发布时，已重新核对交付包与原构建目录的 SHA256。
 
-源码材料已上传；四个 wheel 经代理上传时，整包和单文件推送均发生连接中断，因此本分支先不包含 wheel。原始包保留在 45.107 的 `dsv41_workspace_verify_20261019` 容器和宿主机共享目录 `/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/`。现场可按下文下载官方 DSL wheel，并分别构建 Python 3.11 / 3.12 的算子包。
+四个原始 wheel 已按 XZ 压缩并切成每卷不超过 768 KiB 的分卷，保存在 [`wheel_archives/`](wheel_archives/README.md)。整包和单文件推送曾发生连接中断，分卷逐个推送后可通过 `python3 wheel_archives/restore.py` 还原两组包。107 上的原包仍保留在共享目录 `/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/`。
 
 ## 解决的问题
 
@@ -43,7 +43,8 @@ QSLI 的 staging 预留容量不会增加实际启动的 worker 数。相对按�
 - `patches/recipes_native_release.patch`：将构建输入加入 cann-recipes-infer 的完整补丁。
 - `patches/operator_fixes.patch`：相对固定 cannbot-dsl 源码版本的修改，便于逐项审阅。
 - `patches/pr181-source.patch`：PR181 原始补丁。
-- `WHEEL_SHA256SUMS`：以下四个原始 wheel 的校验值；wheel 本身未上传，每组必须使用相同的 Python ABI。
+- `wheel_archives/`：四个原始 wheel 的压缩分卷、还原脚本和逐卷校验清单。
+- `WHEEL_SHA256SUMS`：以下四个原始 wheel 的校验值；还原后每组必须使用相同的 Python ABI。
 - `evidence/`：上游版本、源文件 hash、wheel 来源、构建环境和原始验证摘要。
 - `SHA256SUMS`：本目录交付文件校验值。
 
@@ -68,7 +69,7 @@ QSLI 的 staging 预留容量不会增加实际启动的 worker 数。相对按�
 
 ```bash
 sha256sum -c SHA256SUMS
-# 从 45.107 取得原始 wheels/ 目录后再执行：
+python3 wheel_archives/restore.py
 sha256sum -c WHEEL_SHA256SUMS
 # 先停止将要更换包的服务；填写该服务实际使用的 Python 路径。
 bash native_build/install-wheels.sh /path/to/service/python "$PWD/wheels"
@@ -104,9 +105,9 @@ cd models/deepseek_v4_1/native_build
 
 完整 `ds41` 组的 QW / K 导出会读取 NPU 设备属性，构建容器需要能看到 NPU。构建工作目录和输出目录应放在支持原子目录发布的本地文件系统。保留原来的七算子组：MQSMLA、QLI、QSLI、Indexer QW、Indexer K、Engram gate、Attention epilogue。
 
-### 2. 下载并校验两个官方 DSL wheel
+### 2. 还原 wheel 或下载官方 DSL
 
-在本目录执行以下命令，按保存的官方地址下载，校验通过后才写入 `wheels/`。网络需要代理时，先在当前 shell 配置代理。此步骤下载官方 DSL；算子包使用下一步的源码现场构建。
+在仓库根目录运行 `python3 wheel_archives/restore.py`，可离线还原全部四个 wheel，然后执行 `sha256sum -c WHEEL_SHA256SUMS`。若只需重新下载官方 DSL，也可执行以下命令；它按保存的官方地址下载，校验通过后才写入 `wheels/`。网络需要代理时，先在当前 shell 配置代理。
 
 ```bash
 python3 - <<'PY'
