@@ -1,0 +1,36 @@
+{
+  "recipes_commit": "6d060311ae75f6105fe4216e20566875da5a8838",
+  "dsl_samples_commit": "4519e5372a8b9306f7d823688c0cb8141ee34fb1",
+  "pr181_commit": "e9809cfca72d519c1d47c84fc3094cde11353af6",
+  "compiler_distribution": "cannbot-dsl==0.7.0",
+  "operator_distribution": "cannbot-arena-net==0.3.0+ds41fix20261021",
+  "group": [
+    "mqsmla",
+    "qli",
+    "qsli",
+    "indexer_prologue_qw",
+    "indexer_prologue_k",
+    "engram_gate",
+    "attn_epilogue"
+  ],
+  "upstream_source_sha256": {
+    "samples/mixed_quant_sparse_flash_mla/mixed_quant_sparse_flash_mla.py": "40b5b14ced15bb7c3d3687ab7387d508a19065eb5353dfb0675348e0de22fa3f",
+    "samples/mixed_quant_sparse_flash_mla_metadata/mixed_quant_sparse_flash_mla_metadata.py": "a62295be0fdf6acc7c0c606e60424e3fbc03310bee4e1effa2a384ccd6415b65",
+    "samples/quant_lightning_indexer_dsl/quant_lightning_indexer_dsl.py": "e5152d247b0ddd26a186b42a0a40d3ecc5a6f026d9fd2b0f43a96e41df1e00e6",
+    "samples/quant_lightning_indexer_metadata_dsl/quant_lightning_indexer_metadata_dsl.py": "f432d48d24a2a0adf600bd6baf6b014ecb4fe319d52531128e6ff6d8e0ea8f38",
+    "samples/quant_sparse_lightning_indexer_dsl/quant_sparse_lightning_indexer_dsl.py": "5095bc225abe585f9dcfef4eb86b5d50e1f3005caa585c67d114623f7d61923f",
+    "samples/quant_sparse_lightning_indexer_metadata_dsl/quant_sparse_lightning_indexer_metadata_dsl.py": "e88f8d417ce98daf523399e1e1216a30bfd17d8f60a1724c058c6abf911fa2d8",
+    "samples/indexer_prologue_qw/indexer_prologue_qw.py": "4320ccac249ef2edae938880268db617c77468faae20bee45b17ec8faa95bd7e",
+    "samples/indexer_prologue_qw/indexer_prologue_qw_format.py": "2b7cbde594d088e0d716de68be08c2a641efd3cff9f4d3cbbcd516b300b225fe",
+    "samples/indexer_prologue_k/indexer_prologue_k.py": "d75199d21f66e93068d3b80299bba43be194b79c7ae586aedab3afc71cacf329",
+    "samples/engram_gate/engram_gate.py": "8bb89c3f7790f2646dca8ee6b4b87cb0483ddfcf54d2552f0661b8593ba57092",
+    "samples/attn_epilogue/attn_epilogue.py": "058447d8b8f524b9e9e31b9394bbc577691ff37ce9dee9f587e2766161bfceb2",
+    "samples/attn_epilogue/attn_epilogue_common.py": "e97869b154bcb19daceb487ed6a6096b3c6e4eed17b6a11c6969217da538ee35"
+  },
+  "changes": [
+    "PR181 Cube core count and metadata adaptation",
+    "QLI/QSLI default export profiles include has_seqused_q False and True",
+    "Build-time installed CANN HCC C++ include discovery for official DSL 0.7.0",
+    "Preserve upstream LICENSE in binary wheel"
+  ]
+}

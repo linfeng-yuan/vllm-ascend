@@ -1,0 +1,74 @@
+QSLI 28/32 核适配的功能、显存和性能核对（2026-10-21）
+
+改动来源
+MAX_CUBE_WORKERS 从 32 改为 LD_RECORD_START（36）来自用户提供的 PR181，
+提交 e9809cfca72d519c1d47c84fc3094cde11353af6：
+https://gitcode.com/cann/cannbot-dsl/pull/181
+这与增加 has_seqused_q=False 静态导出配置是两项独立改动。
+完整原始补丁见 pr181-source.patch。
+
+staging 容量为什么不等于执行核数
+QSLI 的 staging_key、staging_scale 使用 torch.empty 按最大容量分配，
+源码没有对整个 staging 做全量清零。每个实际 worker 的地址为：
+  (worker_idx * STAGING_DEPTH + candidate_tile % STAGING_DEPTH) * TILE_N
+实际 launch 根据设备属性读取 28 或 32；多余 worker 的空间不参与这条访问路径。
+staging 的外层行数扩大，不改变每个 worker 内部的行宽、环形深度或计算量。
+固定 TensorSpec 同样按 36 份声明，因此分配与编译契约匹配。
+不能只将运行时分配改小而保留现有固定 36 份的静态 TensorSpec。
+
+当前参数：STAGING_DEPTH=4，TILE_N=256；key 每行 64 字节，scale 每行 4 字节。
+每 worker 两块缓冲区合计 4*256*(64+4)=69632 字节=68 KiB。
+固定 36 份合计 2448 KiB，即 2.390625 MiB。
+相对按实际核数分配：32 核多 272 KiB，28 核多 544 KiB。
+这是张量请求字节数，缓存分配器保留的显存可能按分配粒度取整。
+额外容量不等于额外传输、额外 worker 或额外运算；仍可能影响分配器及显存余量。
+
+本次性能 A/B
+107 的实际硬件为 Ascend950DT_9582，32 Cube 核；Python3.11，DSL0.7.0。
+before：最终源码仅撤回 PR181，False 配置等其他修改保留。
+after：交付的 cannbot-arena-net 0.3.0+ds41fix20261021 wheel。
+before 通过 JIT 编译后从磁盘缓存加载，after 加载 wheel 中的 AOT 产物。
+所有编译、加载和预热均排除在计时外；第二轮各场景计时前后编译/加载计数不变。
+因此本 A/B 评估的是整个 PR181 的稳态影响，没有单独隔离 staging 扩容的影响。
+
+覆盖 3 种算子配置：QLI 无 candidate（page64/ratio2）、QLI 有 candidate
+（page128/ratio1）、QSLI（page128/ratio1）；topk512、candidate2048、mask3、
+has_seqused_q=False。
+每种配置覆盖：
+  decode：query长度(1,1)，key长度(8192,16384)
+  prefill256：query长度(96,160)，key长度(16384,32768)
+  prefill1024：query长度(512,512)，key长度(32768,65536)
+共 9 场景，首轮每场景 15 对、复测每场景 25 对；每对交替 before/after 顺序。
+分别测量纯 compute 和 metadata+compute；分别记录 Python eager 墙钟和
+NPU Graph 设备事件耗时（每图包含 8 次调用，按调用数归一化）。
+额外验证 3 个长输入场景、两版本、两种模式：将 graph 输出覆盖成 sentinel，
+并将 AICPU metadata 清零，重放后均恢复正确结果，排除空图计时。
+
+结果
+两轮全部场景的修复前后输出均逐元素完全一致。
+首轮纯 compute 的设备耗时变化 -0.887% 到 +0.601%；复测 -0.300% 到 +0.447%。
+首轮 metadata+compute 设备耗时变化 -0.075% 到 +0.835%；复测 -0.347% 到 +0.445%。
+这些场景未观察到明显设备计算性能下降，变化均在正负 1% 内。
+Python eager 纯 compute 调用路径首轮变化 +1.069% 到 +1.564%，
+复测 +0.392% 到 +1.809%，各场景变化的中位数两轮均约 +1.2%。
+Host 路径存在可测的小开销；单独测得设备属性查询约 3.3 微秒。
+metadata+compute 的 eager 测量波动更大：首轮 -3.87% 到 +5.50%，
+复测 -2.95% 到 +1.63%；不能把首轮最高 5.5% 当成稳定退化。
+以上百分比均为场景内成对相对变化的中位数；原始样本和 bootstrap 区间保留在 JSON。
+
+边界
+这不是整个 vLLM 服务的吞吐、TTFT 或 TPOT 对照，也未测 Python3.12 的性能。
+其他服务仍占用显存，测量在 NPU0 上交错执行，没有停止或修改其他服务。
+28 worker 在 32 核卡上的功能/参考精度已由前次交付验证通过，物理 28 核卡尚未实测。
+本次未做物理 28 核卡的性能 A/B，不能据此作出其性能无退化的实测结论。
+测试完成已停止本次启动的两个独立验证容器。
+
+文件
+benchmark_status.json、native_report.json、performance_analysis.json：首轮及原始样本。
+repeat2/：复测报告、原始样本、日志；无计时内编译或加载。
+graph_validation/：长输入的 graph 重放与 metadata 恢复校验。
+validation_summary.json：验证范围和显存计算汇总。
+property_lookup.json：Host 属性查询成本。
+baseline_ops/、baseline_provenance.json、pr181-source.patch：基线源码及溯源。
+benchmark_pr181.py、analyze.py：复现脚本，依赖已安装的最终 cp311 wheel 和 DSL0.7.0。
+复现时将报告目录设为可写目录，脚本同级保留 baseline_ops 目录。

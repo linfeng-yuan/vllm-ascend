@@ -1,0 +1,22 @@
+{
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "executable": "/opt/ds41py312/bin/python",
+  "architecture": "aarch64",
+  "platform": "Linux-6.6.0-159.4.16.170.oe2403sp4.aarch64-aarch64-with-glibc2.39",
+  "versions": {
+    "cannbot-dsl": "0.7.0",
+    "torch": "2.10.0",
+    "torch-npu": "2.10.0.post7",
+    "numpy": "1.26.4",
+    "setuptools": "81.0.0",
+    "wheel": "0.48.0",
+    "pytest": "9.1.1",
+    "pybind11": "3.1.0",
+    "attrs": "25.3.0",
+    "decorator": "5.2.1",
+    "psutil": "7.0.0",
+    "scipy": "1.15.3",
+    "cloudpickle": "3.1.2",
+    "ml-dtypes": "0.5.3"
+  }
+}

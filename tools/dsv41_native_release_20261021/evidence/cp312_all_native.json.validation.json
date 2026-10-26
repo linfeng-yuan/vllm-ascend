@@ -1,0 +1,43 @@
+{
+  "status": "PASS",
+  "operators": [
+    {
+      "module": "mixed_quant_sparse_flash_mla",
+      "installed_hits": 36,
+      "status": "PASS"
+    },
+    {
+      "module": "quant_lightning_indexer_dsl",
+      "installed_hits": 36,
+      "status": "PASS"
+    },
+    {
+      "module": "quant_sparse_lightning_indexer_dsl",
+      "installed_hits": 36,
+      "status": "PASS"
+    },
+    {
+      "module": "indexer_prologue_qw",
+      "installed_hits": 2,
+      "status": "PASS"
+    },
+    {
+      "module": "indexer_prologue_k",
+      "installed_hits": 6,
+      "status": "PASS"
+    },
+    {
+      "module": "engram_gate",
+      "installed_hits": 4,
+      "status": "PASS"
+    },
+    {
+      "module": "attn_epilogue",
+      "installed_hits": 18,
+      "status": "PASS"
+    }
+  ],
+  "counts": {
+    "installed_hit": 138
+  }
+}

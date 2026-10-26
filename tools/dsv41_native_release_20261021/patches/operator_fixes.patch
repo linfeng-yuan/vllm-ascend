@@ -1,0 +1,470 @@
+--- a/samples/quant_lightning_indexer_dsl/quant_lightning_indexer_dsl.py
++++ b/samples/quant_lightning_indexer_dsl/quant_lightning_indexer_dsl.py
+@@ -79,9 +79,10 @@
+ VEC_TILE = 128
+ CANDIDATE_BLOCK_SIZE = 8
+ TOPK_TRUNK_LEN = 26624
+-MAX_CUBE_WORKERS = 32
+ # Metadata 的 LI 区占 36 行，LD/FD 归并记录从固定第 36 行开始。
+ LD_RECORD_START = 36
++# TensorSpec/GM capacity; the launch count is queried from the input device.
++MAX_CUBE_WORKERS = LD_RECORD_START
+ METADATA_ELEMENTS = 1024
+ METADATA_FIELDS = 8
+ METADATA_ROWS = METADATA_ELEMENTS // METADATA_FIELDS
+@@ -107,6 +108,17 @@
+ CACHED_TOPK_VALUE_OFFSET = CACHED_TOPK_INDEX_OFFSET + CACHED_TOPK_COUNT * 4
+ KEY_STORAGE_ROW_ELEMENTS = N2 * PACKED_D
+ KEY_SCALE_STORAGE_ROW_ELEMENTS = N2 * 2 * 2
++
++
++def _get_cube_core_num(device):
++    """Use the input NPU; LD_RECORD_START is the fixed LI/LD boundary."""
++    workers = int(torch.npu.get_device_properties(device).cube_core_num)
++    if not 1 <= workers <= LD_RECORD_START:
++        raise RuntimeError(
++            f"Unsupported Cube core count {workers}; "
++            f"LI metadata supports 1..{LD_RECORD_START}"
++        )
++    return workers
+ 
+ 
+ @jit
+@@ -6946,13 +6958,13 @@
+         )
+         sparse_indices = make_tensor(
+             make_pointer(dtypes.int32, dtypes.int64(sparse_indices_address), MemLoc.GM),
+-            make_layout((64 * query_tile_rows, topk), stride=(topk, 1)),
++            make_layout((worker_count * 2 * query_tile_rows, topk), stride=(topk, 1)),
+         )
+         sparse_value_bits = make_tensor(
+             make_pointer(
+                 dtypes.uint16, dtypes.int64(sparse_value_bits_address), MemLoc.GM
+             ),
+-            make_layout((64 * query_tile_rows, topk), stride=(topk, 1)),
++            make_layout((worker_count * 2 * query_tile_rows, topk), stride=(topk, 1)),
+         )
+         final_sparse_bits = make_tensor(
+             make_pointer(
+@@ -6977,7 +6989,8 @@
+                 dtypes.int32, dtypes.int64(candidate_indices_address), MemLoc.GM
+             ),
+             make_layout(
+-                (64 * query_tile_rows, candidate_topk), stride=(candidate_topk, 1)
++                (worker_count * 2 * query_tile_rows, candidate_topk),
++                stride=(candidate_topk, 1)
+             ),
+         )
+         candidate_value_bits = make_tensor(
+@@ -6985,7 +6998,8 @@
+                 dtypes.uint16, dtypes.int64(candidate_value_bits_address), MemLoc.GM
+             ),
+             make_layout(
+-                (64 * query_tile_rows, candidate_topk), stride=(candidate_topk, 1)
++                (worker_count * 2 * query_tile_rows, candidate_topk),
++                stride=(candidate_topk, 1)
+             ),
+         )
+         query = make_tensor(
+@@ -7191,7 +7205,11 @@
+     candidate_width = cannbotdsl.Dim("CANDIDATE_WIDTH")
+     partial_rows = cannbotdsl.Dim("PARTIAL_ROWS")
+     _metadata_tasks = cannbotdsl.Dim("METADATA_TASKS")
+-    workspace_rows = MAX_CUBE_WORKERS * (query_tile_m // query_head_count)
++    workspace_rows = cannbotdsl.Dim(
++        "WORKSPACE_ROWS",
++        min=1,
++        max=MAX_CUBE_WORKERS * (query_tile_m // query_head_count),
++    )
+     fake = TensorSpec
+     dummy_i32_spec = fake((1,), dtypes.int32)
+     cu_spec = (
+@@ -7580,20 +7598,22 @@
+     if metadata.device != q.device:
+         raise ValueError("Metadata must be on the same device as q")
+     metadata = metadata.view(METADATA_ROWS, METADATA_FIELDS)
+-    worker_count = MAX_CUBE_WORKERS
+-    workspace_row_count = MAX_CUBE_WORKERS * (tile_m // query_heads)
++    worker_count = _get_cube_core_num(q.device)
++    workspace_row_count = worker_count * (tile_m // query_heads)
+     shard_pad = tokens_pad
+     # Public outputs and GM scratch are allocation-only Torch calls.  The
+     # fused kernel writes every public row, including invalid/padded rows.
+     sparse_indices_2d = torch.empty(
+-        (64 * query_tile_rows, int(topk)), dtype=torch.int32, device=query.device
++        (worker_count * 2 * query_tile_rows, int(topk)),
++        dtype=torch.int32, device=query.device
+     )
+     sparse_values_2d = torch.empty(
+-        (64 * query_tile_rows, int(topk)), dtype=torch.bfloat16, device=weights.device
++        (worker_count * 2 * query_tile_rows, int(topk)),
++        dtype=torch.bfloat16, device=weights.device
+     )
+     candidate_count = max(0, int(candidate_topk_blocks))
+     candidate_indices_2d = torch.empty(
+-        (64 * query_tile_rows, candidate_count),
++        (worker_count * 2 * query_tile_rows, candidate_count),
+         dtype=torch.int32,
+         device=query.device,
+     )
+@@ -7621,7 +7641,7 @@
+         else torch.empty((1, split_count), dtype=torch.int32, device=query.device)
+     )
+     candidate_value_workspace = torch.empty(
+-        (64 * query_tile_rows, kernel_candidate_count),
++        (worker_count * 2 * query_tile_rows, kernel_candidate_count),
+         dtype=torch.uint16,
+         device=query.device,
+     )
+@@ -7692,7 +7712,7 @@
+         final_candidate_indices.data_ptr(),
+         final_candidate_bits.data_ptr(),
+         int(return_value),
+-        min(64, t),
++        min(worker_count * 2, t),
+         0 if output_idx_offset is None else output_idx_offset.data_ptr(),
+     )
+ 
+@@ -7740,12 +7760,14 @@
+         dict(
+             candidate_enabled=enabled,
+             candidate_topk=2048 if enabled else 1,
++            has_seqused_q=has_used_q,
+             mask_mode=mask,
+             cmp_ratio=ratio,
+             pa_block_size=page,
+             layout_k=layout,
+         )
+-        for enabled, mask, ratio, (layout, page) in product(
++        for enabled, has_used_q, mask, ratio, (layout, page) in product(
++            (False, True),
+             (False, True),
+             (0, 3),
+             (1, 2),
+@@ -8102,13 +8124,13 @@
+         )
+         sparse_indices = make_tensor(
+             make_pointer(dtypes.int32, dtypes.int64(sparse_indices_address), MemLoc.GM),
+-            make_layout((64 * query_tile_rows, topk), stride=(topk, 1)),
++            make_layout((worker_count * 2 * query_tile_rows, topk), stride=(topk, 1)),
+         )
+         sparse_value_bits = make_tensor(
+             make_pointer(
+                 dtypes.uint16, dtypes.int64(sparse_value_bits_address), MemLoc.GM
+             ),
+-            make_layout((64 * query_tile_rows, topk), stride=(topk, 1)),
++            make_layout((worker_count * 2 * query_tile_rows, topk), stride=(topk, 1)),
+         )
+         final_sparse_bits = make_tensor(
+             make_pointer(
+@@ -8133,7 +8155,8 @@
+                 dtypes.int32, dtypes.int64(candidate_indices_address), MemLoc.GM
+             ),
+             make_layout(
+-                (64 * query_tile_rows, candidate_topk), stride=(candidate_topk, 1)
++                (worker_count * 2 * query_tile_rows, candidate_topk),
++                stride=(candidate_topk, 1)
+             ),
+         )
+         candidate_value_bits = make_tensor(
+@@ -8141,7 +8164,8 @@
+                 dtypes.uint16, dtypes.int64(candidate_value_bits_address), MemLoc.GM
+             ),
+             make_layout(
+-                (64 * query_tile_rows, candidate_topk), stride=(candidate_topk, 1)
++                (worker_count * 2 * query_tile_rows, candidate_topk),
++                stride=(candidate_topk, 1)
+             ),
+         )
+         query = make_tensor(
+@@ -8347,7 +8371,11 @@
+     candidate_width = cannbotdsl.Dim("CANDIDATE_WIDTH")
+     partial_rows = cannbotdsl.Dim("PARTIAL_ROWS")
+     _metadata_tasks = cannbotdsl.Dim("METADATA_TASKS")
+-    workspace_rows = MAX_CUBE_WORKERS * (query_tile_m // query_head_count)
++    workspace_rows = cannbotdsl.Dim(
++        "WORKSPACE_ROWS",
++        min=1,
++        max=MAX_CUBE_WORKERS * (query_tile_m // query_head_count),
++    )
+     fake = TensorSpec
+     dummy_i32_spec = fake((1,), dtypes.int32)
+     cu_spec = (
+@@ -8654,20 +8682,22 @@
+     if metadata.device != q.device:
+         raise ValueError("Metadata must be on the same device as q")
+     metadata = metadata.view(METADATA_ROWS, METADATA_FIELDS)
+-    worker_count = MAX_CUBE_WORKERS
+-    workspace_row_count = MAX_CUBE_WORKERS * (tile_m // query_heads)
++    worker_count = _get_cube_core_num(q.device)
++    workspace_row_count = worker_count * (tile_m // query_heads)
+     shard_pad = tokens_pad
+     # Public outputs and GM scratch are allocation-only Torch calls.  The
+     # fused kernel writes every public row, including invalid/padded rows.
+     sparse_indices_2d = torch.empty(
+-        (64 * query_tile_rows, int(topk)), dtype=torch.int32, device=query.device
++        (worker_count * 2 * query_tile_rows, int(topk)),
++        dtype=torch.int32, device=query.device
+     )
+     sparse_values_2d = torch.empty(
+-        (64 * query_tile_rows, int(topk)), dtype=torch.bfloat16, device=weights.device
++        (worker_count * 2 * query_tile_rows, int(topk)),
++        dtype=torch.bfloat16, device=weights.device
+     )
+     candidate_count = max(0, int(candidate_topk_blocks))
+     candidate_indices_2d = torch.empty(
+-        (64 * query_tile_rows, candidate_count),
++        (worker_count * 2 * query_tile_rows, candidate_count),
+         dtype=torch.int32,
+         device=query.device,
+     )
+@@ -8695,7 +8725,7 @@
+         else torch.empty((1, split_count), dtype=torch.int32, device=query.device)
+     )
+     candidate_value_workspace = torch.empty(
+-        (64 * query_tile_rows, kernel_candidate_count),
++        (worker_count * 2 * query_tile_rows, kernel_candidate_count),
+         dtype=torch.uint16,
+         device=query.device,
+     )
+@@ -8766,7 +8796,7 @@
+         final_candidate_indices.data_ptr(),
+         final_candidate_bits.data_ptr(),
+         int(return_value),
+-        min(64, t),
++        min(worker_count * 2, t),
+         0 if output_idx_offset is None else output_idx_offset.data_ptr(),
+     )
+ 
+--- a/samples/quant_sparse_lightning_indexer_dsl/quant_sparse_lightning_indexer_dsl.py
++++ b/samples/quant_sparse_lightning_indexer_dsl/quant_sparse_lightning_indexer_dsl.py
+@@ -78,7 +78,6 @@
+ VECTOR0_READY_ID = 6
+ AIV1_SYNC_ID_OFFSET = 16
+ TOPK_TRUNK_LEN = 16384
+-MAX_CUBE_WORKERS = 32
+ 
+ # 每个 8-token 候选块：K 为 8×64B，E8M0 scale 为 8×4B。
+ SCALE_GROUP_SIZE = 32
+@@ -100,6 +99,19 @@
+ METADATA_FIELDS = 8
+ METADATA_ROWS = METADATA_ELEMENTS // METADATA_FIELDS
+ LD_RECORD_START = 36
++# TensorSpec/GM capacity; the launch count is queried from the input device.
++MAX_CUBE_WORKERS = LD_RECORD_START
++
++
++def _get_cube_core_num(device):
++    """Use the input NPU; LD_RECORD_START is the fixed LI/LD boundary."""
++    workers = int(torch.npu.get_device_properties(device).cube_core_num)
++    if not 1 <= workers <= LD_RECORD_START:
++        raise RuntimeError(
++            f"Unsupported Cube core count {workers}; "
++            f"LI metadata supports 1..{LD_RECORD_START}"
++        )
++    return workers
+ 
+ 
+ @jit
+@@ -2468,16 +2480,16 @@
+             dtypes.uint16, dtypes.int64(sparse_value_address), MemLoc.GM
+         )
+         sparse_indices = make_tensor(
+-            index_pointer, make_layout((64, topk), stride=(topk, 1))
++            index_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         sparse_value_bits = make_tensor(
+-            value_pointer, make_layout((64, topk), stride=(topk, 1))
++            value_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         merge_indices = make_tensor(
+-            index_pointer, make_layout((64, topk), stride=(topk, 1))
++            index_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         merge_bits = make_tensor(
+-            value_pointer, make_layout((64, topk), stride=(topk, 1))
++            value_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         QsliFusedKernel(
+             tokens,
+@@ -2992,15 +3004,15 @@
+         raise ValueError("Metadata must be on the same device as q")
+     metadata = metadata.view(METADATA_ROWS, METADATA_FIELDS)
+     tokens = full_tokens
+-    worker_count = MAX_CUBE_WORKERS
++    worker_count = _get_cube_core_num(q.device)
+ 
+     sparse_indices = torch.empty(
+-        (64, N2, int(topk)),
++        (worker_count * 2, N2, int(topk)),
+         dtype=torch.int32,
+         device=q.device,
+     )
+     sparse_values = torch.empty(
+-        (64, N2, int(topk)),
++        (worker_count * 2, N2, int(topk)),
+         dtype=torch.bfloat16,
+         device=w.device,
+     )
+@@ -3120,13 +3132,15 @@
+     }
+     profiles = [
+         dict(
++            has_seqused_q=has_used_q,
+             mask_mode=mask,
+             cmp_ratio=ratio,
+             pa_block_size=page,
+             has_output_offset=offset,
+             layout_k=layout,
+         )
+-        for mask, ratio, (layout, page), offset in product(
++        for has_used_q, mask, ratio, (layout, page), offset in product(
++            (False, True),
+             (0, 3),
+             (1, 2),
+             (("PA_BBND", 64), ("PA_BBND", 128), ("TND", 0)),
+@@ -3821,16 +3835,16 @@
+             dtypes.uint16, dtypes.int64(sparse_value_address), MemLoc.GM
+         )
+         sparse_indices = make_tensor(
+-            index_pointer, make_layout((64, topk), stride=(topk, 1))
++            index_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         sparse_value_bits = make_tensor(
+-            value_pointer, make_layout((64, topk), stride=(topk, 1))
++            value_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         merge_indices = make_tensor(
+-            index_pointer, make_layout((64, topk), stride=(topk, 1))
++            index_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         merge_bits = make_tensor(
+-            value_pointer, make_layout((64, topk), stride=(topk, 1))
++            value_pointer, make_layout((worker_count * 2, topk), stride=(topk, 1))
+         )
+         QsliTndFusedKernel(
+             tokens,
+@@ -4245,15 +4259,15 @@
+         )
+     metadata = metadata.view(METADATA_ROWS, METADATA_FIELDS)
+     tokens = full_tokens
+-    worker_count = MAX_CUBE_WORKERS
++    worker_count = _get_cube_core_num(q.device)
+ 
+     sparse_indices = torch.empty(
+-        (64, N2, int(topk)),
++        (worker_count * 2, N2, int(topk)),
+         dtype=torch.int32,
+         device=q.device,
+     )
+     sparse_values = torch.empty(
+-        (64, N2, int(topk)),
++        (worker_count * 2, N2, int(topk)),
+         dtype=torch.bfloat16,
+         device=w.device,
+     )
+--- a/samples/quant_lightning_indexer_metadata_dsl/quant_lightning_indexer_metadata_dsl.py
++++ b/samples/quant_lightning_indexer_metadata_dsl/quant_lightning_indexer_metadata_dsl.py
+@@ -392,7 +392,12 @@
+     output_idx_offset=None,
+ ):
+     groups = q.shape[0] if sparse else batch * max_tasks
+-    workers = 32
++    workers = int(torch.npu.get_device_properties(q.device).cube_core_num)
++    if not 1 <= workers <= LD_RECORD_START:
++        raise RuntimeError(
++            f"Unsupported Cube core count {workers}; "
++            f"LI metadata supports 1..{LD_RECORD_START}"
++        )
+     output = torch.empty((METADATA_ELEMENTS,), dtype=torch.int32, device=q.device)
+     scratch = torch.empty((batch + 1,), dtype=torch.int64, device=q.device)
+     _, compiled = compiled_metadata()
+--- a/samples/quant_sparse_lightning_indexer_metadata_dsl/quant_sparse_lightning_indexer_metadata_dsl.py
++++ b/samples/quant_sparse_lightning_indexer_metadata_dsl/quant_sparse_lightning_indexer_metadata_dsl.py
+@@ -80,8 +80,6 @@
+     if args.sparse != 0:
+         groups = total_q
+     workers = args.workers
+-    if args.sparse != 0:
+-        workers = 32
+     # 调度开销按有效 M 轴长度计算，尾组只计入实际 query 行。
+     for i in range(METADATA_ELEMENTS):
+         args.output[i] = 0
+@@ -414,7 +412,12 @@
+     output_idx_offset=None,
+ ):
+     groups = q.shape[0] if sparse else batch * max_tasks
+-    workers = 32
++    workers = int(torch.npu.get_device_properties(q.device).cube_core_num)
++    if not 1 <= workers <= LD_RECORD_START:
++        raise RuntimeError(
++            f"Unsupported Cube core count {workers}; "
++            f"LI metadata supports 1..{LD_RECORD_START}"
++        )
+     output = torch.empty((METADATA_ELEMENTS,), dtype=torch.int32, device=q.device)
+     scratch = torch.empty(
+         (groups * (12 + 3 * splits),), dtype=torch.int64, device=q.device
+--- a/net/native_package/build.py
++++ b/net/native_package/build.py
+@@ -292,6 +292,9 @@
+     for name in ("pyproject.toml", "setup.py"):
+         shutil.copy2(PROJECT / name, package / name)
+ 
++    # Include the upstream source license in the binary distribution.
++    shutil.copy2(NET_ROOT.parent / "LICENSE", package / "LICENSE")
++
+     staged_ops = package / "src" / "ops"
+     staged_ops.mkdir(parents=True)
+     (staged_ops / "__init__.py").write_text(
+@@ -305,12 +308,36 @@
+         shutil.copy2(sources / filename, staged_ops / filename)
+ 
+ 
++def configure_aicpu_headers(target: str) -> list[str]:
++    """Bridge DSL 0.7.0's HCC 7.3 paths to the installed CANN toolchain.
++
++    This affects package compilation only. Installed metadata .so files do
++    not require a C++ compiler or CPLUS_INCLUDE_PATH at serving time.
++    """
++    from cannbotdsl.aicpu.toolchain import AicpuToolchain
++
++    toolchain = AicpuToolchain(npu_arch=target, launch_mode="interface")
++    base = Path(toolchain.toolkit) / "toolkit/toolchain/hcc/aarch64-target-linux-gnu/include/c++"
++    versions = [p for p in base.iterdir() if (p / "cstdint").is_file()]
++    if not versions:
++        raise RuntimeError(f"No CANN HCC C++ headers with cstdint under {base}")
++    def version_key(path):
++        return tuple(int(x) for x in path.name.split("."))
++    selected = max(versions, key=version_key)
++    include = [str(p) for p in (selected, selected / "aarch64-target-linux-gnu", selected / "backward") if p.is_dir()]
++    previous = os.environ.get("CPLUS_INCLUDE_PATH", "")
++    os.environ["CPLUS_INCLUDE_PATH"] = ":".join(dict.fromkeys(include + [p for p in previous.split(":") if p]))
++    print("AICPU CANN HCC headers: " + ":".join(include), flush=True)
++    return include
++
++
+ def build_aicpu_metadata(
+     selected: list[str], output: Path, work: Path, target: str
+ ) -> None:
+     """Compile each metadata kernel separately to avoid same-name collisions."""
+     from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
+ 
++    configure_aicpu_headers(target)
+     metadata = {
+         "mqsmla": (
+             "mixed_quant_sparse_flash_mla_metadata",
+--- a/net/native_package/pyproject.toml
++++ b/net/native_package/pyproject.toml
+@@ -12,10 +12,10 @@
+ 
+ [project]
+ name = "cannbot-arena-net"
+-version = "0.3.0"
++version = "0.3.0+ds41fix20261021"
+ description = "Selected CANNBotDSL operators and compiled Native resources"
+ requires-python = ">=3.10"
+-dependencies = ["cannbot-dsl>=0.7.0,<0.8", "torch", "pytest"]
++dependencies = ["cannbot-dsl==0.7.0", "torch", "pytest"]
+ 
+ [tool.setuptools.packages.find]
+ where = ["src"]

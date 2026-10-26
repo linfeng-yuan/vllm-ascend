@@ -1,0 +1,87 @@
+{
+  "status": "PASS",
+  "created_utc": "2026-10-20T17:21:00.850886+00:00",
+  "compiler": "cannbot-dsl==0.7.0",
+  "operators": "cannbot-arena-net==0.3.0+ds41fix20261021",
+  "physical_cube_cores": 32,
+  "physical_28_core_sku_tested": false,
+  "physical_28_note": "28 workers were actually launched on the 32-Cube Ascend950DT_9582. A physical 28-Cube SKU still needs validation.",
+  "full_model_evaluation_performed": false,
+  "original_services_modified": false,
+  "abi_tests": {
+    "cp311": {
+      "all_native": {
+        "installed_hit": 138,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "vllm_native": {
+        "installed_hit": 3,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "host28_native": {
+        "installed_hit": 8,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "precision_32": {
+        "cases": 9,
+        "status": "PASS",
+        "physical_cube_cores": 32,
+        "launch_cube_workers": 32,
+        "native_counts": {
+          "installed_hit": 6
+        },
+        "runtime_aicpu_compilation_prohibited": true
+      },
+      "precision_28": {
+        "cases": 9,
+        "status": "PASS",
+        "physical_cube_cores": 32,
+        "launch_cube_workers": 28,
+        "native_counts": {
+          "installed_hit": 6
+        },
+        "runtime_aicpu_compilation_prohibited": true
+      }
+    },
+    "cp312": {
+      "all_native": {
+        "installed_hit": 138,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "vllm_native": {
+        "installed_hit": 3,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "host28_native": {
+        "installed_hit": 8,
+        "installed_miss": 0,
+        "backend_compile": 0
+      },
+      "precision_32": {
+        "cases": 9,
+        "status": "PASS",
+        "physical_cube_cores": 32,
+        "launch_cube_workers": 32,
+        "native_counts": {
+          "installed_hit": 6
+        },
+        "runtime_aicpu_compilation_prohibited": true
+      },
+      "precision_28": {
+        "cases": 9,
+        "status": "PASS",
+        "physical_cube_cores": 32,
+        "launch_cube_workers": 28,
+        "native_counts": {
+          "installed_hit": 6
+        },
+        "runtime_aicpu_compilation_prohibited": true
+      }
+    }
+  }
+}

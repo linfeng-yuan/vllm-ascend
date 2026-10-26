@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "target_container": "dsv41_workspace_verify_20261019",
+  "target_libraries": {
+    "libstdc++.so.6": "/lib64/libstdc++.so.6",
+    "libc.so.6": "/lib64/libc.so.6"
+  },
+  "required_symbols": [
+    "CXXABI_1.3",
+    "CXXABI_1.3.5",
+    "GLIBCXX_3.4",
+    "GLIBCXX_3.4.11",
+    "GLIBCXX_3.4.18",
+    "GLIBCXX_3.4.22",
+    "GLIBC_2.17",
+    "GLIBC_2.34"
+  ],
+  "missing_symbols": []
+}

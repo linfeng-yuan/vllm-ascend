@@ -1,0 +1,65 @@
+{
+  "status": "PASS",
+  "wheels": [
+    {
+      "status": "PASS",
+      "abi": "cp311",
+      "wheel": "cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl",
+      "bytes": 16836601,
+      "sha256": "7ad4357e707f6a05e058358cacbbc8a0de575054e3c80206a49a3a4cb01e2e35",
+      "operators": [
+        "attn_epilogue",
+        "engram_gate",
+        "indexer_prologue_k",
+        "indexer_prologue_qw",
+        "mqsmla",
+        "qli",
+        "qsli"
+      ],
+      "native_so_count": 141,
+      "aicpu": [
+        "ops/_aicpu/metadata_kernel.so",
+        "ops/_aicpu/mqsmla_metadata_kernel.so",
+        "ops/_aicpu/qsli_metadata_kernel.so"
+      ],
+      "max_glibc_symbol": "GLIBC_2.34",
+      "tags": "Wheel-Version: 1.0\nGenerator: setuptools (81.0.0)\nRoot-Is-Purelib: false\nTag: cp311-cp311-linux_aarch64\n\n",
+      "requires": [
+        "cannbot-dsl==0.7.0",
+        "torch",
+        "pytest"
+      ],
+      "source_files_byte_identical": true
+    },
+    {
+      "status": "PASS",
+      "abi": "cp312",
+      "wheel": "cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl",
+      "bytes": 16836793,
+      "sha256": "c9d637d6db8704dee7ab0aa906dc1ed9fef10db6a43fbf35511ca02606fe186b",
+      "operators": [
+        "attn_epilogue",
+        "engram_gate",
+        "indexer_prologue_k",
+        "indexer_prologue_qw",
+        "mqsmla",
+        "qli",
+        "qsli"
+      ],
+      "native_so_count": 141,
+      "aicpu": [
+        "ops/_aicpu/metadata_kernel.so",
+        "ops/_aicpu/mqsmla_metadata_kernel.so",
+        "ops/_aicpu/qsli_metadata_kernel.so"
+      ],
+      "max_glibc_symbol": "GLIBC_2.34",
+      "tags": "Wheel-Version: 1.0\nGenerator: setuptools (81.0.0)\nRoot-Is-Purelib: false\nTag: cp312-cp312-linux_aarch64\n\n",
+      "requires": [
+        "cannbot-dsl==0.7.0",
+        "torch",
+        "pytest"
+      ],
+      "source_files_byte_identical": true
+    }
+  ]
+}

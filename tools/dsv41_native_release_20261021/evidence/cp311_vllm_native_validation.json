@@ -1,0 +1,33 @@
+{
+  "status": "PASS",
+  "python": "3.11.10 (main, Oct  4 2026, 00:38:38) [GCC 13.3.0]",
+  "ops_path": "/opt/ds41py311/lib/python3.11/site-packages/ops/__init__.py",
+  "ops_version": "0.3.0+ds41fix20261021",
+  "dsl_version": "0.7.0",
+  "native_report": {
+    "counts": {
+      "installed_hit": 3
+    },
+    "events": [
+      {
+        "event": "installed_hit",
+        "key": "50ad2bc6e3936f65ede8c92cd4b295c0d01340d1ac353788bdd92b49b53d0d8c",
+        "binary_key_schema": 1,
+        "reason": null
+      },
+      {
+        "event": "installed_hit",
+        "key": "8582ce1595ce41837b2cfd9a202d6216663e3205bffdd5f87a16bf6cef67abe8",
+        "binary_key_schema": 1,
+        "reason": null
+      },
+      {
+        "event": "installed_hit",
+        "key": "eb5b0d7bb8d8097a61bfa63b6c7bb815a1c690ea20835de76de006534a486488",
+        "binary_key_schema": 1,
+        "reason": null
+      }
+    ],
+    "events_dropped": 0
+  }
+}

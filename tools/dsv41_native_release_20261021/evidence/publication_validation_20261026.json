@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-26",
+  "original_source_manifest_files_verified": 30,
+  "original_source_manifest_mismatches": 0,
+  "source_contract_tests": {
+    "passed": 5,
+    "failed": 0
+  },
+  "source_python_syntax": "PASS",
+  "wheel_zip_integrity": "PASS",
+  "wheel_sha256_verified_against_original_remote_delivery": true,
+  "new_document_checks": {
+    "markdownlint": "PASS",
+    "codespell": "PASS",
+    "typos": "PASS"
+  },
+  "repository_format_check": {
+    "command": "bash format.sh ci",
+    "status": "NOT_COMPLETED",
+    "reason": "pre-commit actionlint environment setup failed with ConnectionResetError"
+  },
+  "npu_tests_repeated_during_publication": false,
+  "original_npu_validation": "release_validation.json",
+  "wheel_sha256": {
+    "cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl": "7ad4357e707f6a05e058358cacbbc8a0de575054e3c80206a49a3a4cb01e2e35",
+    "cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl": "c9d637d6db8704dee7ab0aa906dc1ed9fef10db6a43fbf35511ca02606fe186b",
+    "cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl": "28691280da199b46deb5034af99b2e3b67094cd903a7be27bf49b8536cbd0449",
+    "cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl": "bea7e6a1f23e5ace930cf43e7e00a7736aa969e9b4ffb610fdf35f5403feb6bb"
+  }
+}

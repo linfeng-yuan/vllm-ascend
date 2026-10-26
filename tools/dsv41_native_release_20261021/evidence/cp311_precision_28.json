@@ -1,0 +1,153 @@
+{
+  "status": "PASS",
+  "physical_cube_cores": 32,
+  "launch_cube_workers": 28,
+  "physical_28_core_device": false,
+  "device": "Ascend950DT_9582",
+  "cases": [
+    {
+      "operator": "qli",
+      "candidate": false,
+      "page": 64,
+      "has_seqused_q": true,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 3.434
+    },
+    {
+      "operator": "qli",
+      "candidate": false,
+      "page": 64,
+      "has_seqused_q": false,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 3.17
+    },
+    {
+      "operator": "qli",
+      "candidate": false,
+      "page": 64,
+      "has_seqused_q": false,
+      "query_lengths": [
+        1,
+        2
+      ],
+      "key_lengths": [
+        129,
+        513
+      ],
+      "status": "PASS",
+      "seconds": 0.113
+    },
+    {
+      "operator": "qli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": true,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 4.222
+    },
+    {
+      "operator": "qli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": false,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 4.01
+    },
+    {
+      "operator": "qli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": false,
+      "query_lengths": [
+        1,
+        2
+      ],
+      "key_lengths": [
+        129,
+        513
+      ],
+      "status": "PASS",
+      "seconds": 0.165
+    },
+    {
+      "operator": "qsli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": true,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 2.429
+    },
+    {
+      "operator": "qsli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": false,
+      "query_lengths": [
+        3,
+        4
+      ],
+      "key_lengths": [
+        513,
+        777
+      ],
+      "status": "PASS",
+      "seconds": 2.338
+    },
+    {
+      "operator": "qsli",
+      "candidate": true,
+      "page": 128,
+      "has_seqused_q": false,
+      "query_lengths": [
+        1,
+        2
+      ],
+      "key_lengths": [
+        129,
+        513
+      ],
+      "status": "PASS",
+      "seconds": 0.144
+    }
+  ]
+}
