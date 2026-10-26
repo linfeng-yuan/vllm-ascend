@@ -1,0 +1,11 @@
+[operators]
+mqsmla = ["mixed_quant_sparse_flash_mla.py", "mixed_quant_sparse_flash_mla_metadata.py"]
+qli = ["quant_lightning_indexer_dsl.py", "quant_lightning_indexer_metadata_dsl.py"]
+qsli = ["quant_sparse_lightning_indexer_dsl.py", "quant_sparse_lightning_indexer_metadata_dsl.py"]
+indexer_prologue_qw = ["indexer_prologue_qw.py", "indexer_prologue_qw_format.py"]
+indexer_prologue_k = ["indexer_prologue_k.py"]
+engram_gate = ["engram_gate.py"]
+attn_epilogue = ["attn_epilogue.py", "attn_epilogue_common.py"]
+
+[groups]
+ds41 = ["mqsmla", "qli", "qsli", "indexer_prologue_qw", "indexer_prologue_k", "engram_gate", "attn_epilogue"]

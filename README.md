@@ -1,117 +1,179 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vllm-project/vllm-ascend/main/docs/source/logos/vllm-ascend-logo-text-dark.png">
-    <img alt="vllm-ascend" src="https://raw.githubusercontent.com/vllm-project/vllm-ascend/main/docs/source/logos/vllm-ascend-logo-text-light.png" width=55%>
-  </picture>
-</p>
+# DSV4.1 Ascend950 ARM 算子修复与交接
 
-<h3 align="center">
-vLLM Ascend Plugin
-</h3>
+本分支作为 DSV4.1 算子修复的独立交付分支，交付材料和构建说明位于仓库根目录。
 
-<div align="center">
+本目录交付 2026-10-21 在 ARM64 环境构建的 Python 3.11 / 3.12 两组包所用的可重建源码、源码补丁和验证记录。2026-10-26 发布时，已重新核对交付包与原构建目录的 SHA256。
 
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-Ask_AI-_.svg?style=flat&color=0052D9&labelColor=000000&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/vllm-project/vllm-ascend)
+源码材料已上传；四个 wheel 经代理上传时，整包和单文件推送均发生连接中断，因此本分支先不包含 wheel。原始包保留在 45.107 的 `dsv41_workspace_verify_20261019` 容器和宿主机共享目录 `/mnt/share/y00882530/dsv41_release_20261021/deliverable/wheels/`。现场可按下文下载官方 DSL wheel，并分别构建 Python 3.11 / 3.12 的算子包。
 
-</div>
+## 解决的问题
 
-<p align="center">
-| <a href="https://www.hiascend.com/en/"><b>About Ascend</b></a> | <a href="https://docs.vllm.ai/projects/ascend/en/latest/"><b>Documentation</b></a> | <a href="https://slack.vllm.ai"><b>#SIG-Ascend</b></a> | <a href="https://discuss.vllm.ai/c/hardware-support/vllm-ascend-support"><b>Users Forum</b></a> | <a href="https://tinyurl.com/vllm-ascend-meeting"><b>Weekly Meeting</b></a> |
-</p>
+| 问题 | 原因 | 本次修改 |
+| --- | --- | --- |
+| 首次请求仍然编译 QLI / QSLI | vLLM 未传 `seqused_q`，实际需要 `has_seqused_q=False`；原默认静态配置只有对应的 True 分支，binary key 不匹配 | 将 False / True 同时纳入默认静态导出；不改变 vLLM 调用语义 |
+| 28 Cube 核机器无法直接沿用原算子 | QLI / QSLI 及其 metadata 存在固定 32 worker 的假设 | 纳入 cannbot-dsl PR181，从输入 NPU 读取实际 Cube 核数，调整任务、workspace 和 launch |
+| AICPU metadata 构建依赖不存在的 HCC 目录 | 官方 DSL 0.7.0 使用 C++ 7.3.0 头文件路径，构建环境实际提供 14.3.0 | 构建器检测实际 HCC include 目录，并预编译、打包三个 AICPU metadata 动态库 |
 
-<p align="center">
-<a ><b>English</b></a> | <a href="README.zh.md"><b>中文</b></a>
-</p>
+这里的 28 / 32 核指 NPU Cube 核数。静态导出解决首次编译等待，改变输入长度仍须处于已覆盖的静态契约内；其他静态参数、源码或编译器版本变化可能需要重新导出。
 
----
-*Latest News* 🔥
+## 具体改了什么
 
-- [2026/05] We released the new official version [v0.18.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.18.0)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.18.0/) to start using vLLM Ascend Plugin on Ascend.
-- [2026/02] We released the new official version [v0.13.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.13.0)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.13.0/) to start using vLLM Ascend Plugin on Ascend.
+`native_build/` 提供完整构建输入，并与原始归档 `native_build.zip` 逐文件核对一致。以下路径均相对 `native_build/`：
 
-<details>
-<summary>More</summary>
+| 文件 | 修改内容 |
+| --- | --- |
+| `samples/quant_lightning_indexer_dsl/quant_lightning_indexer_dsl.py` | 读取实际 Cube 核数；QLI 默认导出同时覆盖 False / True，去重后共 36 个静态配置 |
+| `samples/quant_sparse_lightning_indexer_dsl/quant_sparse_lightning_indexer_dsl.py` | QSLI 按实际核数执行；默认导出同时覆盖 False / True，共 36 个配置；staging 保留与静态 TensorSpec 匹配的 36 worker 容量 |
+| `samples/quant_lightning_indexer_metadata_dsl/quant_lightning_indexer_metadata_dsl.py` | metadata 使用实际 Cube 核数，保留固定 LI / LD 分区边界 36 |
+| `samples/quant_sparse_lightning_indexer_metadata_dsl/quant_sparse_lightning_indexer_metadata_dsl.py` | 同步 QSLI metadata 的核数与分区契约 |
+| `net/native_package/build.py` | 构建期自动发现 HCC C++ 头文件；导出、打包 AICore 与 AICPU 产物 |
+| `net/native_package/pyproject.toml` | 固定算子 distribution 版本和 DSL 0.7.0 依赖，包含 AICPU 资源 |
+| `install-wheels.sh` | 检查 ARM64 / Python ABI，清理提供同名模块的旧 distribution，再安装匹配的一组包 |
+| `tests/` | 默认导出覆盖、实际核数、metadata 契约、静态命中和 NPU 参考数值检查 |
 
-- [2025/12] We released the new official version [v0.11.0](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.11.0)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.11.0/) to start using vLLM Ascend Plugin on Ascend.
-- [2025/09] We released the new official version [v0.9.1](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.9.1)! Please follow the [official guide](https://docs.vllm.ai/projects/ascend/en/v0.9.1/tutorials/large_scale_ep.html) to start deploying large-scale Expert Parallelism (EP) on Ascend.
-- [2025/08] We hosted the [vLLM Beijing Meetup](https://mp.weixin.qq.com/s/7n8OYNrCC_I9SJaybHA_-Q) with vLLM and Tencent! Please find the [meetup slides](https://drive.google.com/drive/folders/1Pid6NSFLU43DZRi0EaTcPgXsAzDvbBqF).
-- [2025/06] [User stories](https://docs.vllm.ai/projects/ascend/en/latest/community/user_stories/index.html) page is now live! It kicks off with LLaMA-Factory/verl/TRL/GPUStack to demonstrate how vLLM Ascend assists Ascend users in enhancing their experience across fine-tuning, evaluation, reinforcement learning (RL), and deployment scenarios.
-- [2025/06] [Contributors](https://docs.vllm.ai/projects/ascend/en/latest/community/contributors.html) page is now live! All contributions deserve to be recorded, thanks for all contributors.
-- [2025/05] We've released the first official version [v0.7.3](https://github.com/vllm-project/vllm-ascend/releases/tag/v0.7.3)! We collaborated with the vLLM community to publish a blog post sharing our practice: [Introducing vLLM Hardware Plugin, Best Practice from Ascend NPU](https://blog.vllm.ai/2025/05/12/hardware-plugin.html).
-- [2025/03] We hosted the [vLLM Beijing Meetup](https://mp.weixin.qq.com/s/VtxO9WXa5fC-mKqlxNUJUQ) with vLLM team! Please find the [meetup slides](https://drive.google.com/drive/folders/1Pid6NSFLU43DZRi0EaTcPgXsAzDvbBqF).
-- [2025/02] vLLM community officially created [vllm-project/vllm-ascend](https://github.com/vllm-project/vllm-ascend) repo for running vLLM seamlessly on the Ascend NPU.
-- [2024/12] We are working with the vLLM community to support [[RFC]: Hardware pluggable](https://github.com/vllm-project/vllm/issues/11162).
+QSLI 的 staging 预留容量不会增加实际启动的 worker 数。相对按实际核数分配，32 核多占 272 KiB、28 核多占 544 KiB。不能只缩小运行时分配而保留当前固定 36 份的静态 TensorSpec。
 
-</details>
+编译器使用未修改的官方 `cannbot-dsl==0.7.0` wheel；修复在所附算子源码和 recipes 构建器中。`recipes_native_release.patch` 将完整构建目录加入指定版本的 cann-recipes-infer。它不修改 vLLM-Ascend 的运行时代码，也不自动更换现有镜像中的包。
 
----
+## 文件与版本
 
-## Overview
+- `native_build/`：可直接查看和构建的源码，含七个算子、构建器、安装脚本、测试和许可证。
+- `native_build.zip`：相同源码的原始归档。
+- `LICENSE`：源码所用的 CANN Open Software License Agreement Version 2.0。
+- `patches/recipes_native_release.patch`：将构建输入加入 cann-recipes-infer 的完整补丁。
+- `patches/operator_fixes.patch`：相对固定 cannbot-dsl 源码版本的修改，便于逐项审阅。
+- `patches/pr181-source.patch`：PR181 原始补丁。
+- `WHEEL_SHA256SUMS`：以下四个原始 wheel 的校验值；wheel 本身未上传，每组必须使用相同的 Python ABI。
+- `evidence/`：上游版本、源文件 hash、wheel 来源、构建环境和原始验证摘要。
+- `SHA256SUMS`：本目录交付文件校验值。
 
-vLLM Ascend (`vllm-ascend`) is a community maintained hardware plugin for running vLLM seamlessly on the Ascend NPU.
+| Python / 架构 | 官方 DSL 编译器与运行时 | 本次构建的算子包 |
+| --- | --- | --- |
+| CPython 3.11 / aarch64 | `cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl` | `cannbot_arena_net-0.3.0+ds41fix20261021-cp311-cp311-linux_aarch64.whl` |
+| CPython 3.12 / aarch64 | `cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl` | `cannbot_arena_net-0.3.0+ds41fix20261021-cp312-cp312-linux_aarch64.whl` |
 
-It is the recommended approach for supporting the Ascend backend within the vLLM community. It adheres to the principles outlined in the [[RFC]: Hardware pluggable](https://github.com/vllm-project/vllm/issues/11162), providing a hardware-pluggable interface that decouples the integration of the Ascend NPU with vLLM.
+当前打包器的 distribution 名为 `cannbot-arena-net`，导入名为 `ops`；沿用其 0.3.0 版本并追加修复标识，没有重新命名成旧的 `cannbot-arena-net-ops==0.1.0`。DSL 的 distribution 名为 `cannbot-dsl`，导入名为 `cannbotdsl`。
 
-By using vLLM Ascend plugin, popular open-source models, including Transformer-like, Mixture-of-Experts (MoE), Embedding, Multi-modal LLMs can run seamlessly on the Ascend NPU.
+固定来源：
 
-For detailed information on supported models, please refer to [supported models](https://docs.vllm.ai/projects/ascend/en/latest/user_guide/support_matrix/supported_models.html).
+- [cann-recipes-infer](https://gitcode.com/cann/cann-recipes-infer)：`6d060311ae75f6105fe4216e20566875da5a8838`。
+- [cannbot-dsl](https://gitcode.com/cann/cannbot-dsl)：samples / native builder 来自 `4519e5372a8b9306f7d823688c0cb8141ee34fb1`。
+- [PR181](https://gitcode.com/cann/cannbot-dsl/pull/181)：`e9809cfca72d519c1d47c84fc3094cde11353af6`。
 
-## Prerequisites
+## 直接安装现有包
 
-- Hardware: Atlas 800I A2 Inference series, Atlas A2 Training series, Atlas 800I A3 Inference series, Atlas A3 Training series, Atlas 300I Duo (Experimental)
-- OS: Linux
-- Software:
-    - Python >= 3.10, < 3.12
-    - CANN == 9.0.0 (For Ascend HDK version, please refer to the [Release Notes](https://www.hiascend.com/document/detail/zh/canncommercial/900/releasenote/releasenote_0000.html))
-    - PyTorch == 2.10.0, torch-npu == 2.10.0
-    - vLLM (the same version as vllm-ascend)
+基础环境需提供匹配的 CANN、torch、torch_npu 等依赖。原构建环境为 CANN 9.2.0、torch 2.10.0、torch_npu 2.10.0.post7；算子 ELF 要求的最高 GLIBC 符号为 `GLIBC_2.34`。Python 3.11 和 3.12 分别构建，没有通过改 wheel 文件名复用另一版本。
 
-## Getting Started
+在本目录执行：
 
-Please use the following recommended versions to get started quickly:
+```bash
+sha256sum -c SHA256SUMS
+# 从 45.107 取得原始 wheels/ 目录后再执行：
+sha256sum -c WHEEL_SHA256SUMS
+# 先停止将要更换包的服务；填写该服务实际使用的 Python 路径。
+bash native_build/install-wheels.sh /path/to/service/python "$PWD/wheels"
+```
 
-| Version    | Release type | Doc                                  |
-|------------|--------------|--------------------------------------|
-| v0.21.0rc1 | Latest release candidate | See [QuickStart](https://docs.vllm.ai/projects/ascend/en/latest/quick_start.html) and [Installation](https://docs.vllm.ai/projects/ascend/en/latest/installation.html) for more details |
-| v0.18.0 | Latest stable version | See [QuickStart](https://docs.vllm.ai/projects/ascend/en/v0.18.0/quick_start.html) and [Installation](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html) for more details |
+安装器会卸载提供 `ops` / `cannbotdsl` 同名模块的旧 distribution，然后离线安装匹配的一组 wheel。应将安装步骤放在镜像中其他 vLLM / arena 依赖安装之后，避免随后被旧依赖覆盖。已有服务需要重启才能使用新包。
 
-## Branch
+## 现场重建步骤
 
-vllm-ascend has a main branch and a dev branch.
+### 1. 准备源码和构建环境
 
-- **main**: main branch, corresponds to the vLLM main branch, and is continuously monitored for quality through Ascend CI.
-- **releases/vX.Y.Z**: development branch, created alongside new releases of vLLM. For example, `releases/v0.13.0` is the dev branch for vLLM `v0.13.0` version.
+先克隆交付分支，进入本目录并校验源码材料：
 
-Below are the maintained branches:
+```bash
+git clone --branch codex/dsv41-native-release-20261026 --single-branch \
+  https://github.com/linfeng-yuan/vllm-ascend.git
+cd vllm-ascend
+sha256sum -c SHA256SUMS
+```
 
-| Branch           | Status       | Note                                 |
-|------------------|--------------|--------------------------------------|
-| main             | Maintained   | CI commitment for vLLM main branch and vLLM v0.22.1 tag |
-| v0.7.1-dev       | Unmaintained | Outdated, no longer maintained. |
-| v0.7.3-dev       | Unmaintained | Only bug fixes are allowed, and no new release tags anymore. |
-| v0.9.1-dev       | Unmaintained | Only bug fixes are allowed, and no new release tags anymore. |
-| v0.11.0-dev      | Unmaintained | Only bug fixes are allowed, and no new release tags anymore. |
-| releases/v0.13.0 | Maintained   | CI commitment for vLLM 0.13.0 version |
-| releases/v0.18.0 | Maintained   | CI commitment for vLLM 0.18.0 version |
-| releases/v0.20.2rc | Maintained | CI commitment for vLLM 0.20.2 version |
-| rfc/feature-name | Maintained   | [Feature branches](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html#feature-branches) for collaboration |
-  
-Please refer to [Versioning policy](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html) for more details.
+完整源码已在 `native_build/`，克隆后可直接构建。若需将修改集成回 recipes 仓：
 
-## Contributing
+```bash
+git clone https://gitcode.com/cann/cann-recipes-infer.git
+cd cann-recipes-infer
+git checkout 6d060311ae75f6105fe4216e20566875da5a8838
+git apply --check /path/to/patches/recipes_native_release.patch
+git apply /path/to/patches/recipes_native_release.patch
+cd models/deepseek_v4_1/native_build
+```
 
-See [CONTRIBUTING](https://docs.vllm.ai/projects/ascend/en/latest/developer_guide/contribution/index.html) for more details, which is a step-by-step guide to help you set up the development environment, build and test.
+构建必须使用 aarch64 的匹配 Python、DSL wheel 和 CANN 环境。两个 Python 环境均需已有匹配的 torch / torch_npu，以及 setuptools>=70.1、wheel、pytest。原构建使用 setuptools 81.0.0，详细依赖见 `evidence/build_environment_cp*.json`。
 
-We welcome and value any contributions and collaborations:
+完整 `ds41` 组的 QW / K 导出会读取 NPU 设备属性，构建容器需要能看到 NPU。构建工作目录和输出目录应放在支持原子目录发布的本地文件系统。保留原来的七算子组：MQSMLA、QLI、QSLI、Indexer QW、Indexer K、Engram gate、Attention epilogue。
 
-- Please let us know if you encounter a bug by [filing an issue](https://github.com/vllm-project/vllm-ascend/issues)
-- Please use [User forum](https://discuss.vllm.ai/c/hardware-support/vllm-ascend-support) for usage questions and help.
+### 2. 下载并校验两个官方 DSL wheel
 
-## Weekly Meeting
+在本目录执行以下命令，按保存的官方地址下载，校验通过后才写入 `wheels/`。网络需要代理时，先在当前 shell 配置代理。此步骤下载官方 DSL；算子包使用下一步的源码现场构建。
 
-- vLLM Ascend Weekly Meeting: <https://tinyurl.com/vllm-ascend-meeting>
-- Wednesday, 15:00 - 16:00 (UTC+8, [Convert to your timezone](https://dateful.com/convert/gmt8?t=15))
+```bash
+python3 - <<'PY'
+import hashlib
+import json
+from pathlib import Path
+from urllib.request import urlopen
 
-## License
+destination = Path("wheels")
+destination.mkdir(exist_ok=True)
+for entry in json.loads(Path("evidence/dsl_wheel_provenance.json").read_text()):
+    with urlopen(entry["url"], timeout=120) as response:
+        data = response.read()
+    if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+        raise RuntimeError("SHA256 mismatch: " + entry["file"])
+    (destination / entry["file"]).write_bytes(data)
+    print("Verified:", entry["file"])
+PY
+```
 
-Apache License 2.0, as found in the [LICENSE](./LICENSE) file.
+### 3. 分别构建 Python 3.11 / 3.12
+
+从仓库根目录执行：
+
+```bash
+release_dir="$PWD"
+cd native_build
+export CANN_ENV=/usr/local/Ascend/cann/set_env.sh
+unset CANNBOTDSL_DS41_PROFILES
+
+export PYTHON=/path/to/python3.11
+export CANNBOTDSL_WHEEL="$release_dir/wheels/cannbot_dsl-0.7.0-cp311-cp311-manylinux_2_28_aarch64.whl"
+bash run-build.sh --group ds41 \
+  --work-root /tmp/ds41-work-cp311 --output-root /tmp/ds41-output-cp311
+
+export PYTHON=/path/to/python3.12
+export CANNBOTDSL_WHEEL="$release_dir/wheels/cannbot_dsl-0.7.0-cp312-cp312-manylinux_2_28_aarch64.whl"
+bash run-build.sh --group ds41 \
+  --work-root /tmp/ds41-work-cp312 --output-root /tmp/ds41-output-cp312
+```
+
+按实际路径修改 Python 和 `CANN_ENV`。构建结束会打印 `Final wheels:`。两个 ABI 使用独立 work / output 目录；不要再设置旧的临时 `CANNBOTDSL_DS41_PROFILES`，默认配置已包含 False 分支。
+
+DSL wheel 也可按 `evidence/dsl_wheel_provenance.json` 中的官方地址和 SHA256 获取。源代码许可证保存在根目录和源码归档内，算子 wheel 同样包含许可证。
+
+### 4. 安装后验证
+
+使用服务对应的 Python，在 `native_build/` 目录运行：
+
+```bash
+python tests/test_release_contracts.py
+python tests/verify_vllm_static.py --report /tmp/ds41-vllm-native.json
+python tests/verify_all_static.py --report /tmp/ds41-all-native.json
+python tests/run_kernel_precision.py --cores 32 --report /tmp/ds41-32.json
+# 28 核实机使用 --cores 28；32 核卡上此参数只验证实际启动 28 worker。
+```
+
+验证脚本强制使用安装包内的静态产物，并禁用会掩盖遗漏的回退路径。预期每个 ABI 的默认组为 138 次静态命中、0 miss、0 后端编译；此前 vLLM 缺失的三组 False 配置应全部命中。
+
+## 已完成验证及边界
+
+原始验收记录见 `evidence/release_validation.json`：
+
+- cp311 / cp312 各 138 个默认静态配置全部命中，0 miss、0 后端编译；各包含三个预编译 AICPU metadata 动态库。
+- 两个 ABI 各完成 32 worker、28 worker 各 9 个 NPU 数值用例，合计 36 个，通过独立 MXFP4 / TopK 参考检查；覆盖 False 及长度变化。
+- 实际硬件为 Ascend950DT_9582，32 Cube / 64 Vector 核。28 worker 在这台 32 核卡上真实执行；物理 28 核 SKU 尚未验收。
+- 另有 cp311、32 核的两轮九场景性能 A/B：设备侧变化均在正负 1% 内，Python 纯算子调用耗时中位数约增加 1.2%。这评估整个 PR181，不能单独归因于 staging 预留；见 `evidence/performance_32core_20261021.txt`。
+- 未完成整模型 DeepSWE 精度、vLLM 吞吐 / TTFT / TPOT 对照、物理 28 核性能 A/B，以及 cp312 性能 A/B。
+
+本分支保存可重建的发布材料。后续镜像需要显式安装原始 wheel、现场构建的 wheel，或采用这份构建源码；其他官方镜像 tag 不保证包含这些修改。

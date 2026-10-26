@@ -1,0 +1,7 @@
+* -text
+*.md text eol=lf
+*.whl -diff
+*.zip -diff
+*.patch -whitespace
+native_build/** -text -whitespace
+LICENSE -whitespace

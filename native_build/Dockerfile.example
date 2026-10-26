@@ -1,0 +1,7 @@
+FROM your-aarch64-runtime-image
+# Existing runtime must provide compatible CANN, torch and torch_npu.
+# Select the Python interpreter actually used by the serving process.
+ARG PYTHON=/vllm-workspace/.venv/bin/python
+COPY wheels/ /opt/ds41-wheels/
+COPY native_build/install-wheels.sh /opt/ds41-install.sh
+RUN bash /opt/ds41-install.sh "${PYTHON}" /opt/ds41-wheels

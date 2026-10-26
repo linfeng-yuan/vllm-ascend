@@ -1,5 +1,0 @@
-* -text
-*.md text eol=lf
-*.whl -diff
-*.zip -diff
-*.patch -whitespace
