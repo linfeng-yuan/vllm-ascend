@@ -1,0 +1,17 @@
+{
+  "image": "vllm-ascend-dev:0.32.0-dsl080-mr348-megamoe-metadata-fence-p8192-20261105",
+  "image_id": "sha256:9179fe2e4fcb4780f8ea0f1a9a9b7475ac94fbe6b36ff7e27553ee4ad4f36d5f",
+  "tar_sha256": "7542e5a6dcf1860f68feb982d8d875ca45b23bef4c807318f07d5bfda80f012c",
+  "tar_bytes": 26284340224,
+  "vllm_commit": "5df63a7203cdb9328d824a27b682e77c7b9928be",
+  "vllm_ascend_base_commit": "80f1a251c30bf7057036677e855515c39f373815",
+  "vllm_ascend_csrc_tree": "fd210ec80c1f969dc37674f6fa8d2a413bc08b5f",
+  "vllm_ascend_native_sha256": "be4bb9d47629020790bb9cab8da3d53d8bccb9c39559d5290fc594bd000416af",
+  "arena_upstream_base": "9e01355ab8f809050579271c0eadcc5858ed20bc",
+  "arena_preserved_base_commit": "2545d0195b9547d8e25a26d37e722f5b27fd29ab",
+  "mr348_head": "e3166de6b6380ef2c51f8f0ee9f988606ebf96db",
+  "dsl_wheel_sha256": "2d40711a02a12a72a6983004d96752556650f78892905471c3ead17eb7bf1302",
+  "arena_wheel_sha256": "9e7de48477f7e4c78351b411c7392e44c313b1606ad816efa1b21b3175f65315",
+  "deepgemm_wheel_sha256": "2a8c7c4749cf02f404d490a235fbd0152116b3d07e6fc256c4b95bd7c99aff7c",
+  "publication_scope": "2026-11-05 image source; excludes 2026-11-06 three performance optimizations"
+}

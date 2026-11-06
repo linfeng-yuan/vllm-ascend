@@ -1,0 +1,46 @@
+diff --git a/vllm_ascend/models/deepseek_v41/decoder_replay_state.py b/vllm_ascend/models/deepseek_v41/decoder_replay_state.py
+index ead9ef866..0dabc5856 100644
+--- a/vllm_ascend/models/deepseek_v41/decoder_replay_state.py
++++ b/vllm_ascend/models/deepseek_v41/decoder_replay_state.py
+@@ -41,6 +41,7 @@ class DecoderReplayInputs:
+     attn_groups: list[list[AttentionGroup]]
+     encoder_replay_start: torch.Tensor
+     pcp_context: "AscendPCPAttentionContext | None" = None
++    metadata_producer_stream: torch.npu.Stream | None = None
+ 
+ 
+ @dataclass(frozen=True)
+@@ -253,6 +254,12 @@ class DecoderReplayState:
+             return
+ 
+         # This rank needs a compact batch and matching attention metadata.
++        # The ordinary batch's planners may still run on the target producer
++        # stream. Their AICPU temporary storage is shared with compact planners;
++        # join before launching another planner, while keeping retirement with
++        # the target's existing metadata lifecycle.
++        if inputs.metadata_producer_stream is not None:
++            torch.npu.current_stream().wait_stream(inputs.metadata_producer_stream)
+         self._prepare_compact_replay(inputs, plan)
+ 
+     def _build_replay_plan(self, inputs: DecoderReplayInputs) -> _DecoderReplayPlan:
+diff --git a/vllm_ascend/models/deepseek_v41/engram/model_state.py b/vllm_ascend/models/deepseek_v41/engram/model_state.py
+index b5133f483..6a97110cc 100644
+--- a/vllm_ascend/models/deepseek_v41/engram/model_state.py
++++ b/vllm_ascend/models/deepseek_v41/engram/model_state.py
+@@ -235,7 +235,15 @@ class EngramModelState(AscendModelState):
+         if self.decoder_replay_state is not None:
+             self.decoder_replay_state.prepare(
+                 DecoderReplayInputs(
+-                    input_batch, block_tables, slot_mappings, attn_groups, replay_start, self.pcp_context
++                    input_batch,
++                    block_tables,
++                    slot_mappings,
++                    attn_groups,
++                    replay_start,
++                    self.pcp_context,
++                    metadata_producer_stream=(
++                        self.device_metadata.executor.stream if self.device_metadata is not None else None
++                    ),
+                 ),
+                 cudagraph_mode,
+                 for_capture=for_capture,
