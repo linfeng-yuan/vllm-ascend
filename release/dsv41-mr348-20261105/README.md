@@ -40,6 +40,39 @@ MegaMoE 使用原交付的 DeepGEMM 工作包；普通公开仓库 HEAD 不能�
 arena 的完整源码、profile 和出包脚本在
 [私有 cannbotdsl 分支](https://github.com/linfeng-yuan/cannbotdsl/tree/release/dsv41-mr348-local32-pipe32-20261105/release/dsv41-mr348-20261105)。
 
+## DeepGEMM 如何出包
+
+当前交付镜像实际安装独立的工作包，现成产物是：
+
+```text
+/mnt/share/y00882530/clean-editable-megamoe-dsl080-20261104/wheels/deep_gemm-0.1.1+working45108-cp312-cp312-linux_aarch64.whl
+```
+
+该包 SHA256：`2a8c7c4749cf02f404d490a235fbd0152116b3d07e6fc256c4b95bd7c99aff7c`。
+它保存成功运行环境的原生扩展、Python 模块和 JIT 头文件，并带两处 CANN 9.2 头文件兼容修改。
+复刻本镜像时使用这个包，不需要重新手工编译：
+
+```bash
+python3 -m pip install --no-deps --force-reinstall \
+  /mnt/share/y00882530/clean-editable-megamoe-dsl080-20261104/wheels/deep_gemm-0.1.1+working45108-cp312-cp312-linux_aarch64.whl
+```
+
+源码同时已有内置构建入口，条件为 A5 目标且 `COMPILE_CUSTOM_KERNELS=1`：
+
+- `setup.py` 注册 `vllm_ascend.third_party.deep_gemm._C` 扩展。
+- `build_ext` 调用 `tools/deepgemm/build.py`，固定 DeepGEMM-Ascend 提交
+  `3a35326271b069b8b5bf1a754435acd6cc91575b` 及其递归依赖。
+- 构建脚本先用上游 `setup.py` 生成临时 DeepGEMM wheel，再提取原生扩展、Python 模块、
+  JIT 头文件和许可证到 `vllm_ascend/third_party/deep_gemm/`，并应用兼容修改。
+- 这些内容随 vllm-ascend wheel 交付；临时的独立 DeepGEMM wheel 不另作发行产物。
+- `pyproject.toml` 通过 setuptools 调用该构建入口，没有声明从 PyPI 安装 `deep-gemm`。
+
+构建入口存在不等于重编产物已经与本镜像完成验收。
+本次源码发布没有重新产出、验收内置 DeepGEMM 的完整 vllm-ascend wheel；
+当前模型运行证据对应上面的独立工作包。
+运行时若已安装符合 NPU API 的外部 `deep_gemm`，loader 优先使用外部包；否则使用内置包。
+需要判断实际用了哪份，可查看 `Loaded NPU DeepGEMM ... from ...` 日志。
+
 ## 在原镜像中更新 Python 源码
 
 最直接的使用方式是加载原 tar，再在独立容器中切换源码。
