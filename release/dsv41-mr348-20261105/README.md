@@ -39,7 +39,7 @@ tar 大小 26284340224 字节；SHA256：
 MegaMoE 使用原交付的 DeepGEMM 工作包；普通公开仓库 HEAD 不能自动视为这个工作包的替代品。
 arena 的完整源码、profile 和出包脚本在
 [公开 cannbotdsl 分支](https://github.com/linfeng-yuan/cannbotdsl/tree/release/dsv41-mr348-local32-pipe32-20261105/release/dsv41-mr348-20261105)。
-该分支的 `build_mr348.py --work-root /tmp/arena-build --jobs 2` 从当前源码全量编译 arena，
+该分支的 `build_mr348.py --work-root /tmp/arena-build` 从当前源码全量编译 arena，
 无需历史 arena base wheel；仍需 CANN 9.2.0 和独立的 cannbot-dsl 0.8.0 编译器依赖。
 具体环境与命令见上面的公开分支说明。
 
