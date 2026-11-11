@@ -18,6 +18,7 @@ from vllm.distributed import get_ep_group, get_tensor_model_parallel_world_size
 from vllm.logger import logger
 
 from vllm_ascend.ascend_config import get_ascend_config
+from vllm_ascend.ops.fused_moe.deepgemm_static_placement import stage_experts
 
 
 class DeepGemmV41Experts:
@@ -62,6 +63,11 @@ class DeepGemmV41Experts:
             raise ValueError("V4.1 MegaMoE requires a positive finite routed scaling factor")
         deep_gemm = load_deepgemm()
         self.kernel = deep_gemm.fp8_fp4_mega_moe
+        placement = getattr(layer, "_deepgemm_static_placement", None)
+        self.logical_to_physical = (
+            torch.tensor(placement, dtype=torch.int32, device=layer.w13_weight.device)
+            if placement is not None else None
+        )
         self._prepare_shared_weights(layer, text, deep_gemm.transform_weights_for_mega_moe)
 
         # Byte-paired UE8M0 is packed along K, not the NZ-transposed layout
@@ -185,7 +191,10 @@ class DeepGemmV41Experts:
         quantized, scale = torch_npu.npu_dynamic_mx_quant(x, dst_type=torch.float8_e4m3fn)
         self.buffer.x[:count].copy_(quantized)
         self.buffer.x_sf[:count].copy_(scale.reshape(count, self.hidden // 32).view(torch.int16))
-        self.buffer.topk_idx[:count].copy_(topk_ids)
+        if self.logical_to_physical is None:
+            self.buffer.topk_idx[:count].copy_(topk_ids)
+        else:
+            stage_experts(self.buffer.topk_idx, topk_ids, self.logical_to_physical)
         # DeepInfer scales routed weights before SwiGLU/requantization. Shared
         # experts have their own kernel path and must not receive this factor.
         routed_weights = (

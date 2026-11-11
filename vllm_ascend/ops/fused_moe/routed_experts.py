@@ -402,8 +402,13 @@ class AscendRoutedExperts(RoutedExperts):  # type: ignore[no-redef]
         n_shared_experts: int = 0,
         **kwargs,
     ):
+        from vllm_ascend.ops.fused_moe.deepgemm_static_placement import place_checkpoint_experts
+
         object.__setattr__(self, "tid2eid", tid2eid)
         super().__init__(*args, **kwargs)
+        self._deepgemm_static_placement = place_checkpoint_experts(self.layer_name, self.expert_map_manager)
+        if self._deepgemm_static_placement is not None:
+            assert not get_current_vllm_config().parallel_config.enable_ep_weight_filter
         if self.quant_config is None:
             # Preserve the pre-refactor BF16 lifecycle: let upstream create
             # weights first, then install the Ascend execution method.
