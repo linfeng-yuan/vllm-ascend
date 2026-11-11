@@ -1333,6 +1333,9 @@ def should_skip_allreduce_across_dp_group(vllm_config: VllmConfig, is_draft_mode
     - Both the prefill and decode communication methods are MC2 (or FUSED_MC2), or
     - Decode requires MC2 and ascend_config.scheduler_config.recompute_scheduler_enable is True.
 
+    The temporary DeepInfer D path also skips with RecomputeScheduler, retaining
+    its local-token preparation and its own dispatch/combine implementation.
+
     Skipping means each rank may have a different number of tokens, so MC2 needs
     a non-zero global_bs and must NOT receive mc2_mask. CANN MegaMoe requires
     uniform token counts across ranks, so its FUSED_MC2 path cannot skip.
@@ -1362,6 +1365,11 @@ def should_skip_allreduce_across_dp_group(vllm_config: VllmConfig, is_draft_mode
     is_kv_consumer = vllm_config.kv_transfer_config is not None and vllm_config.kv_transfer_config.is_kv_consumer
     if not is_kv_consumer:
         return False
+
+    # Temporary DeepInfer D-node bypass: preserve its local-token preparation.
+    # RecomputeScheduler sends prefill back to P; CANN restrictions stay above.
+    if ascend_config.deepgemm_mega_moe:
+        return ascend_config.scheduler_config.recompute_scheduler_enable
 
     from vllm_ascend.ascend_forward_context import select_moe_comm_method, use_cann_megamoe
     from vllm_ascend.ops.fused_moe.moe_comm_method import MoECommType

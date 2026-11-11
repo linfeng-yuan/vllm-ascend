@@ -615,6 +615,12 @@ class AscendConfig:
 
     # ---- A-family (envs fallback): default = envs module value, before-validator injects ----
     enable_fused_mc2: int = 0
+    # DeepSeek V4.1 FP8 x FP4 backend from DeepGEMM-Ascend (950, TP1/EP8).
+    deepgemm_mega_moe: bool = False
+    # A5 local TP1 V4.1 output projection; weights are packed once after loading.
+    dsv41_attn_epilogue: Literal["", "nd", "nz"] = ""
+    # A5 V4.1 Flash indexer Q/weight projections, Query RoPE and MXFP4 packing.
+    dsv41_indexer_prologue: bool = False
     enable_mlapo: bool = True
     # When True, keep MLAPO prefill weights on NPU instead of freeing them
     # on kv_consumer D nodes. Trades NPU memory for stability — D nodes have
