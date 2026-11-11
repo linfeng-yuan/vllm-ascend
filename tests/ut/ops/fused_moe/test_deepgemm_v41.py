@@ -22,7 +22,10 @@ def context():
     )
     assert spec is not None and spec.loader is not None
     backend: Any = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(backend)
+    # The adapter's CPU tests use the default layout. Stub the device kernel import.
+    placement = SimpleNamespace(stage_experts=MagicMock())
+    with patch.dict(sys.modules, {"vllm_ascend.ops.fused_moe.deepgemm_static_placement": placement}):
+        spec.loader.exec_module(backend)
     config = SimpleNamespace(
         additional_config={"deepgemm_mega_moe": True},
         model_config=SimpleNamespace(
