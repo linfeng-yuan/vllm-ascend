@@ -696,6 +696,7 @@ class AscendConfig:
         )
     )
     dsv41_indexer_prologue: bool = False
+    engram_prefill_uva_aiv_limit: bool = False
     enable_prefill_mc2: bool = False
     multistream_overlap_shared_expert: bool = False
     enable_kv_nz: bool = False
