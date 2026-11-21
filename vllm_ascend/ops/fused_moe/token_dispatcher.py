@@ -27,6 +27,7 @@ import torch
 import torch_npu
 from vllm.config import get_current_vllm_config
 from vllm.distributed.parallel_state import get_ep_group
+from vllm.logger import init_logger
 
 from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.ascend_forward_context import get_mc2_tokens_capacity
@@ -52,6 +53,8 @@ from vllm_ascend.ops.fused_moe.moe_utils import async_all_to_all, gather_from_se
 from vllm_ascend.quantization.quant_type import QuantType
 from vllm_ascend.quantization.utils import DynamicMXQuantScaleAlg, get_dynamic_mx_quant_scale_alg
 from vllm_ascend.utils import requires_lmhead_dp_sync, should_skip_allreduce_across_dp_group
+
+logger = init_logger(__name__)
 
 EXPERT_TOKEN_NUMS_TYPE_CUMSUM = 0
 EXPERT_TOKEN_NUMS_TYPE_COUNT = 1
@@ -675,9 +678,50 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllCombineMetadata]
         if self.num_local_experts > 1:
             if num_global_tokens_per_local_expert is None:
                 raise ValueError("num_global_tokens_per_local_expert must be set before operations.")
-            global_input_tokens_local_experts_indices = torch.repeat_interleave(
-                self.expert_ids_per_ep_rank, num_global_tokens_per_local_expert.ravel()
-            )
+            repeats = num_global_tokens_per_local_expert.ravel()
+            try:
+                global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                    self.expert_ids_per_ep_rank, repeats
+                )
+            except RuntimeError:
+                try:
+                    ids = topk_ids.cpu().long().flatten()
+                    valid = (ids >= 0) & (ids < self.num_experts)
+                    expected_hist = torch.bincount(ids[valid], minlength=self.num_experts)
+                    local_hist = num_local_tokens_per_expert.cpu().long()
+                    gathered = num_global_tokens_per_expert.cpu().long()
+                    repeat_host = repeats.cpu().long()
+                    start = self.local_expert_indices[0]
+                    host_slice = gathered[:, start : start + self.num_local_experts]
+                    logger.error(
+                        "V4_REPEAT_INPUTS rank=%s topk_shape=%s topk_dtype=%s invalid_ids=%s "
+                        "local_sum=%s local_hist_wrong_bins=%s gathered_own_wrong_bins=%s "
+                        "gathered_row_sums=%s gathered_row_mins=%s gathered_row_maxs=%s "
+                        "local_slice_row_sums=%s output_splits=%s "
+                        "repeats_dtype=%s repeats_host_sum=%s repeats_negative=%s repeats_max=%s "
+                        "repeats_flat_wrong_bins=%s",
+                        self.ep_rank,
+                        tuple(topk_ids.shape),
+                        topk_ids.dtype,
+                        (~valid).sum().item(),
+                        local_hist.sum().item(),
+                        (local_hist != expected_hist).sum().item(),
+                        (gathered[self.ep_rank] != local_hist).sum().item(),
+                        gathered.sum(dim=1).tolist(),
+                        gathered.min(dim=1).values.tolist(),
+                        gathered.max(dim=1).values.tolist(),
+                        host_slice.sum(dim=1).tolist(),
+                        output_splits.tolist(),
+                        repeats.dtype,
+                        repeat_host.sum().item(),
+                        (repeat_host < 0).sum().item(),
+                        repeat_host.max().item(),
+                        (repeat_host != host_slice.flatten()).sum().item(),
+                    )
+                    logger.error("V4_REPEAT_INPUTS rank=%s repeated_npu_sum=%s", self.ep_rank, repeats.sum().item())
+                except Exception:
+                    logger.exception("V4_REPEAT_INPUTS failure-path readback failed")
+                raise
         else:
             torch.npu.synchronize()
 
