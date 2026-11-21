@@ -21,6 +21,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from abc import ABC, abstractmethod
+from itertools import count
 from typing import Generic
 
 import torch
@@ -55,6 +56,7 @@ from vllm_ascend.quantization.utils import DynamicMXQuantScaleAlg, get_dynamic_m
 from vllm_ascend.utils import requires_lmhead_dp_sync, should_skip_allreduce_across_dp_group
 
 logger = init_logger(__name__)
+_repeat_probe_step = count()
 
 EXPERT_TOKEN_NUMS_TYPE_CUMSUM = 0
 EXPERT_TOKEN_NUMS_TYPE_COUNT = 1
@@ -648,6 +650,7 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllCombineMetadata]
         )
 
     def _preprocess(self, topk_ids: torch.Tensor):
+        probe_step = next(_repeat_probe_step)
         num_local_tokens_per_expert = torch.histc(topk_ids, bins=self.num_experts, min=0, max=self.num_experts)
 
         ep_size = self.ep_size
@@ -684,6 +687,7 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllCombineMetadata]
                     self.expert_ids_per_ep_rank, repeats
                 )
             except RuntimeError:
+                logger.error("V4_REPEAT_RECEIVER step=%s rank=%s", probe_step, self.ep_rank)
                 try:
                     ids = topk_ids.cpu().long().flatten()
                     valid = (ids >= 0) & (ids < self.num_experts)
@@ -722,6 +726,16 @@ class TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllCombineMetadata]
                 except Exception:
                     logger.exception("V4_REPEAT_INPUTS failure-path readback failed")
                 raise
+            finally:
+                if self.ep_rank == 2:
+                    # The call above already synchronizes output-size inference.
+                    # This CPU array was staged before the all-gather.
+                    sent = input_splits.tolist()
+                    if topk_ids.shape[0] >= 3583 or sum(sent) != num_out_tokens or min(sent) < 0:
+                        logger.info(
+                            "V4_REPEAT_SENDER step=%s rank=2 topk_shape=%s expected_total=%s splits=%s",
+                            probe_step, tuple(topk_ids.shape), num_out_tokens, sent,
+                        )
         else:
             torch.npu.synchronize()
 
