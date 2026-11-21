@@ -20,7 +20,9 @@ def host_table(request):
     torch.npu.set_device(0)
     kind = request.param
     dtype = {"bf16": torch.bfloat16, "int8": torch.int8, "mxfp8": torch.float8_e4m3fn}[kind]
-    codes = engram.HostUvaBuffer((17, 128), dtype, torch.device("npu:0"))
+    device = torch.device("npu:0")
+    owner = torch.nn.Module()
+    codes = engram.HostUvaBuffer((17, 128), dtype, device, "codes", owner)
     scales = None
     try:
         values = (torch.arange(17 * 128).reshape(17, 128) % 13 - 6).float()
@@ -28,7 +30,7 @@ def host_table(request):
         reference = codes.tensor.float()
         if kind != "bf16":
             scales = engram.HostUvaBuffer(
-                (17, 4), torch.uint8 if kind == "mxfp8" else torch.float32, torch.device("npu:0")
+                (17, 4), torch.uint8 if kind == "mxfp8" else torch.float32, device, "scales", owner
             )
             exponents = torch.arange(68).reshape(17, 4) % 5 - 2
             factors = 2.0 ** exponents.float()
