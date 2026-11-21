@@ -24,7 +24,8 @@ template <typename T, typename U1, typename U2>
 class MoeGatingTopKHashWithoutGroup {
 public:
     __aicore__ inline MoeGatingTopKHashWithoutGroup(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid, GM_ADDR biasVl, GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid, GM_ADDR biasVl,
+                                GM_ADDR imageMask, GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
                                 const MoeGatingTopKHashTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -58,6 +59,7 @@ private:
     GlobalTensor<T> biasGm_;
     GlobalTensor<T> biasVlGm_;
     GlobalTensor<U1> inputIdsGm_;
+    GlobalTensor<bool> imageMaskGm_;
     GlobalTensor<U2> tid2eidGm_;
     GlobalTensor<T> yGm_;
     GlobalTensor<int32_t> expertIdxGm_;
@@ -69,6 +71,7 @@ private:
     int64_t expertCount_ = 0;
     bool addBias_ = false;
     bool addBiasVl_ = false;
+    bool hasPreparedRouting_ = false;
     bool outFlag_ = false;
     bool hashFlag_ = false;
     int64_t k_ = 0;
@@ -220,6 +223,10 @@ __aicore__ inline bool MoeGatingTopKHashWithoutGroup<T, U1, U2>::IsImageRow(int6
     if (!addBiasVl_) {
         return false;
     }
+    if (hasPreparedRouting_) {
+        // Prepared hash IDs may no longer carry the original image sentinels.
+        return imageMaskGm_.GetValue(row);
+    }
     U1 tokenId = inputIdsGm_.GetValue(row);
     // Draft/padding IDs follow token zero's routing, including sentinel ranges.
     tokenId = tokenId == static_cast<U1>(-1) ? static_cast<U1>(0) : tokenId;
@@ -346,9 +353,10 @@ __aicore__ inline void MoeGatingTopKHashWithoutGroup<T, U1, U2>::SelectExpertIdx
 }
 
 template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKHashWithoutGroup<T, U1, U2>::Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid, GM_ADDR biasVl,
-                                                          GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
-                                                          const MoeGatingTopKHashTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatingTopKHashWithoutGroup<T, U1, U2>::Init(
+    GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid, GM_ADDR biasVl, GM_ADDR imageMask,
+    GM_ADDR y, GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace, const MoeGatingTopKHashTilingData *tilingData,
+    TPipe *tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;
@@ -373,6 +381,10 @@ __aicore__ inline void MoeGatingTopKHashWithoutGroup<T, U1, U2>::Init(GM_ADDR x,
     biasGm_.SetGlobalBuffer((__gm__ T *)bias, expertCount_);
     biasVlGm_.SetGlobalBuffer((__gm__ T *)biasVl, expertCount_);
     inputIdsGm_.SetGlobalBuffer((__gm__ U1 *)inputIds);
+    hasPreparedRouting_ = imageMask != nullptr;
+    if (hasPreparedRouting_) {
+        imageMaskGm_.SetGlobalBuffer((__gm__ bool *)imageMask);
+    }
     tid2eidGm_.SetGlobalBuffer((__gm__ U2 *)tid2eid);
 
     // init output gm buf
