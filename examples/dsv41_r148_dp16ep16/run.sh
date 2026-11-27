@@ -35,7 +35,7 @@ export RUN_INSTANCE="$RUN_DIR/$role/$(date +%s)"
 git -C "$repo" rev-parse HEAD > "$RUN_DIR/$role/source.sha"
 test "$(cat "$RUN_DIR/$role/source.sha")" = 60ece1a4bc09480e014a28a58e6ca4ea7bd22abd
 trap 'rc=$?; printf "%s\n" "$rc" > "$RUN_DIR/$role/launcher.exit"' EXIT
-cd "$here/launch"
-python3 dp_online.py --dp-size "$size" --tp-size 1 --pp-size 1 --pcp-size 1 --dcp-size 1 \
+cd "$RUN_DIR/$role"
+python3 "$here/launch/dp_online.py" --dp-size "$size" --tp-size 1 --pp-size 1 --pcp-size 1 --dcp-size 1 \
     --dp-size-local 8 --dp-rank-start "$rank" --dp-address "$master" --dp-rpc-port 12321 --vllm-start-port 8000 \
     2>&1 | tee "$RUN_DIR/$role/service.log"

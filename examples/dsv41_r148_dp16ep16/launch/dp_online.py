@@ -8,6 +8,7 @@ import time
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 # Also initialize when this launcher is invoked outside the startup wrapper.
 os.environ["PROMETHEUS_MULTIPROC_DIR"] = '/dev/shm/vllm_metrics'
@@ -45,11 +46,12 @@ dp_rpc_port = args.dp_rpc_port
 vllm_start_port = args.vllm_start_port
 # 一个 DP 副本占 tp×pp×pcp 张卡；DCP 不额外占卡
 gpus_per_dp_rank = tp_size * pp_size * pcp_size
+template_path = Path(__file__).resolve().with_name("run_dp_template.sh")
 
 def run_command(visible_devices, dp_rank, vllm_engine_port):
     command = [
         "bash",
-        "./run_dp_template.sh",
+        str(template_path),
         visible_devices,
         str(vllm_engine_port),
         str(dp_size),
@@ -65,8 +67,7 @@ def run_command(visible_devices, dp_rank, vllm_engine_port):
     return subprocess.Popen(command, start_new_session=True, env=child_env)
 
 if __name__ == "__main__":
-    template_path = "./run_dp_template.sh"
-    if not os.path.exists(template_path):
+    if not template_path.is_file():
         print(f"Template file {template_path} does not exist.")
         sys.exit(1)
 
