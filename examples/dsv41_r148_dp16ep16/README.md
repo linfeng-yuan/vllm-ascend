@@ -92,3 +92,9 @@ docker exec "$CONTAINER" bash /repro/run.sh bench "$RUN_DIR/prompt-128k.jsonl" -
 The client captures 10 steps on D rank 0 after the steady window and writes its own results under `$RUN_DIR/profile-bench`. The trace is under `$RUN_DIR/profile`. Take the interval between successive main graph replays and divide by the measured acceptance length including the bonus token. The historical trace gave approximately 56 ms per step, or **16.0 ms/token** at 3.50 tokens per step. Report trace TPOT and measured throughput as separate metrics.
 
 After the benchmark, run `docker stop "$CONTAINER"` on each host to release the cards. The output files are in the mounted `RUN_DIR`.
+
+## 6. GPQA Diamond accuracy
+
+The r148 stack scored **183/198 (92.42%)** in a full GPQA Diamond run. All 198 requests returned. Of these, 197 completed normally and one reached the output limit before producing a final choice. The truncated answer counted as incorrect. There were no transport errors.
+
+The accuracy run used one 8-card Prefill node and one 8-card Decode node, each with DP8/EP8. The proxy routed all requests through P rank 0 and D rank 0, with 16 concurrent requests. D used standard DSpark rejection sampling with `enable_force_eplb=false`. Requests used `temperature=1.0`, `top_p=1.0`, and a limit of 131,072 generated tokens per answer, with thinking enabled and `reasoning_effort=100`.
