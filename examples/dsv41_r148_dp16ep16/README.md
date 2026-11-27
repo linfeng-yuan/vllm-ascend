@@ -5,19 +5,22 @@ This reproduces the BS80 Decode measurement. One 8-card Prefill node fills the K
 ## 1. Obtain the matching inputs
 
 - Three ARM64 hosts with eight Ascend 950 cards each, compatible driver and firmware, a working HCCL/Mooncake data network, and host Docker.
-- The Ubuntu ARM64 r148 base image with CANN 9.3.0 for this run. Set `BASE_IMAGE` to the registry reference or local tag supplied with the image. The expected image ID is `sha256:9722b0304456438355302be279e95e1f2a5e0aa08401d16d19ba35a6a4821a3d`.
-- The separate r148 runtime artifacts `runtime.tar.gz` and `extras.tar.gz`, with checksums in [runtime.sha256](runtime.sha256). They contain the integrated Ascend source at `60ece1a4bc09480e014a28a58e6ca4ea7bd22abd`, its native extension, Engram/HIXL, DeepGEMM, Fastokens, the CANNBot AOT packages and the installed MegaMHC vendor files. The base vLLM revision is `4ba787ec9959e566d3b587a796dff07673324da5`. Fetch these artifacts and the base image through your software delivery channel.
-- DeepSeek V4.1 Flash weights and the supplied `prompt-128k.jsonl` fixture. Its only line contains the original benchmark's `input` messages and has SHA-256 `47b8e092d5022551477cff7351ee150e2d086e35d2f49a3d06050356d9e77246`. The serving tokenizer and chat template produce 131,102 tokens, including 131,072 cacheable tokens.
+- The A5 Ubuntu ARM64 r148 base image with CANN 9.3.0. Use the SWR image reference below. For an offline installation, load a supplied Docker archive and set `BASE_IMAGE` to its local tag. The expected image ID is `sha256:9722b0304456438355302be279e95e1f2a5e0aa08401d16d19ba35a6a4821a3d`.
+- The supplied `r148-dp16ep16-customer-inputs.zip`. Its `runtime/` directory contains `runtime.tar.gz` and `extras.tar.gz`, checked against [runtime.sha256](runtime.sha256). They provide the integrated Ascend source at `60ece1a4bc09480e014a28a58e6ca4ea7bd22abd`, the compiled native extension, Engram/HIXL, DeepGEMM, Fastokens, the installed `cannbot_dsl 0.8.2` and `cannbot_arena_net 0.3.0` with attention epilogue AOT artifacts, and the installed MegaMHC vendor. The base vLLM revision is `4ba787ec9959e566d3b587a796dff07673324da5`.
+- The full DeepSeek V4.1 Flash checkpoint. Mount its directory as `MODEL_PATH`. [Hugging Face](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) · [ModelScope](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)
+- The `prompt-128k.jsonl` fixture from the same ZIP. Its only line contains the original benchmark's `input` messages and has SHA-256 `47b8e092d5022551477cff7351ee150e2d086e35d2f49a3d06050356d9e77246`. The serving tokenizer and chat template produce 131,102 tokens, including 131,072 cacheable tokens.
 
 ## 2. Prepare the r148 container image
 
-Run this once on an ARM64 host that has the exact base image loaded. The build validates both overlays using network-disabled build steps. It keeps the historical attention epilogue threshold of 384.
+Run this once on an ARM64 host. After loading the base image, the build assembles both archives offline, validates the installed operators, and uses the measured attention epilogue threshold of 384.
 
 ```bash
 cd examples/dsv41_r148_dp16ep16
-export BASE_IMAGE='<r148 image reference>'
+export BASE_IMAGE=swr.cn-north-12.myhuaweicloud.com/atlas_inference/vllm-ascend:nightly-ci-main-a5-cann9.3.0_20261113161300-20261123-r148
+docker pull --platform linux/arm64 "$BASE_IMAGE"
+docker image inspect --format '{{.Id}}' "$BASE_IMAGE"
 export IMAGE=dsv41-r148:dp16ep16-bs80
-ARTIFACT_DIR=/path/to/r148-runtime
+ARTIFACT_DIR=/path/to/extracted-customer-inputs/runtime
 bash build-image.sh "$ARTIFACT_DIR" "$IMAGE"
 docker run --rm --network none --entrypoint bash "$IMAGE" /usr/local/bin/dsv41-check-runtime
 ```
@@ -67,6 +70,8 @@ docker exec "$CONTAINER" bash /repro/run.sh proxy  # D0: port 1999
 ```
 
 D uses TP1 for the model, LM-head TP8, expert parallelism, DeepGEMM MegaMoE with `enable_fused_mc2=3`, MegaMHC, indexer QW, graph capture limit 480, and DSpark with five draft tokens and synthetic acceptance target 3.51. D sets `max_num_seqs=80`, `max_num_batched_tokens=1024`, and GPU memory utilization 0.92. The historical BS80 run used automatic graph sizes with static kernel disabled. P uses eager execution and prefix caching.
+
+For model accuracy evaluation, set D's `enable_force_eplb` to `false` and remove the synthetic rejection-sampling settings so DSpark uses standard rejection sampling.
 
 ## 5. Run the benchmark and check the result
 
