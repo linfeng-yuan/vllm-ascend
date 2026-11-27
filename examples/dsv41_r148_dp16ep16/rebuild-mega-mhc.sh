@@ -25,7 +25,7 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_mhc --vendor_name=dsv41_mhc20 \
     "--cann_3rd_lib_path=$work/third_party" -j"${BUILD_JOBS:-18}" 2>&1 | tee "$work/build.log"
 installer="$PWD/build_out/cann-ops-transformer-dsv41_mhc20_linux-aarch64.run"
 test -s "$installer"
-bash "$installer" --noexec --target "$work/package"
+bash "$installer" --noexec --extract="$work/package"
 vendor="$work/package/packages/vendors/dsv41_mhc20_transformer"
 test -s "$vendor/op_api/lib/libcust_opapi.so"
 nm -D "$vendor/op_api/lib/libcust_opapi.so" | grep -w 'aclnnMegaMhcGetWorkspaceSize'

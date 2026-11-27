@@ -28,7 +28,7 @@ Distribute the resulting image to the other nodes through your registry, or with
 
 The packaged runtime already provides the historical vendor build. To build it from source, get the pinned source inputs listed in [mega-mhc-sources.sha256](mega-mhc-sources.sha256). The operator is `mega_mhc` from CANN ops-transformer at `224e4b1362c3fd0585b4bc7f4ef38bc1f8b67484`, with the recorded build adjustments and dependency archives. Keep the r148 CANN compiler and Python environment for this build.
 
-Run the script inside the **base r148 image** with the source inputs mounted read-only. Use an empty destination on a writable filesystem. The script builds for `ascend950` and extracts the vendor payload to the build directory.
+Run the script inside the **base r148 image** with the source inputs mounted read-only. Pass a new build directory on a writable filesystem. The script builds for `ascend950` and extracts the vendor payload to the build directory.
 
 ```bash
 MHC_INPUT=/path/to/mega-mhc-sources
@@ -40,7 +40,7 @@ docker run --rm --network none -v "$PWD:/repro:ro" -v "$MHC_INPUT:/sources:ro" \
 export MHC_VENDOR="$MHC_OUT/ascend950/package/packages/vendors/dsv41_mhc20_transformer"
 ```
 
-Expose that directory at the same path on every serving host before creating containers. The launcher places its OPP and op API library ahead of the packaged vendor. Run the packaged vendor baseline first, then repeat with the rebuilt vendor to check performance parity.
+Expose that directory on every serving host before creating containers. With `MHC_VENDOR` set, `create-container.sh` mounts the rebuilt vendor at the original vendor path. Run the packaged vendor baseline first with `MHC_VENDOR` unset, then repeat with the rebuilt vendor to check performance parity.
 
 ## 4. Start P, D0 and D1
 

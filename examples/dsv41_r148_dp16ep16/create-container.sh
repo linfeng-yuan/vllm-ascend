@@ -11,7 +11,7 @@ for path in /usr/local/Ascend/driver /usr/local/Ascend/firmware /usr/local/dcmi 
 done
 if [[ -n ${MHC_VENDOR:-} ]]; then
     test -s "$MHC_VENDOR/op_api/lib/libcust_opapi.so"
-    mounts+=(-v "$MHC_VENDOR:$MHC_VENDOR:ro")
+    mounts+=(-v "$MHC_VENDOR:/opt/dsv41-r148-profile/vendor:ro")
 fi
 devices=()
 for device in /dev/davinci{0..7} /dev/davinci_manager /dev/hisi_hdc /dev/ummu /dev/uburma; do
@@ -20,5 +20,5 @@ for device in /dev/davinci{0..7} /dev/davinci_manager /dev/hisi_hdc /dev/ummu /d
 done
 docker run -dit --name "$CONTAINER" --network host --privileged --ipc "${CONTAINER_IPC:-shareable}" --shm-size 500g \
     "${mounts[@]}" "${devices[@]}" \
-    -e P_IP -e D0_IP -e D1_IP -e NPU_NIC_NAME -e MODEL_PATH -e RUN_DIR -e MHC_VENDOR \
+    -e P_IP -e D0_IP -e D1_IP -e NPU_NIC_NAME -e MODEL_PATH -e RUN_DIR \
     --entrypoint /bin/bash "$IMAGE"

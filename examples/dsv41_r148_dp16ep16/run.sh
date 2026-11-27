@@ -5,11 +5,6 @@ here=$(cd -- "$(dirname -- "$0")" && pwd)
 role=${1:?usage: run.sh p|d0|d1|proxy|bench}
 : "${P_IP:?set P_IP}" "${D0_IP:?set D0_IP}" "${D1_IP:?set D1_IP}" "${RUN_DIR:?set RUN_DIR}"
 source /opt/dsv41-r148-profile/env.sh
-if [[ -n ${MHC_VENDOR:-} ]]; then
-    test -s "$MHC_VENDOR/op_api/lib/libcust_opapi.so"
-    export ASCEND_CUSTOM_OPP_PATH="$MHC_VENDOR:${ASCEND_CUSTOM_OPP_PATH:-}"
-    export LD_LIBRARY_PATH="$MHC_VENDOR/op_api/lib:${LD_LIBRARY_PATH:-}"
-fi
 export PYTHONUNBUFFERED=1
 unset HTTP_PROXY http_proxy HTTPS_PROXY https_proxy ALL_PROXY all_proxy
 ports=(8000 8001 8002 8003 8004 8005 8006 8007)
