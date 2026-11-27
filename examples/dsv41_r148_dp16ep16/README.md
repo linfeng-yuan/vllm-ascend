@@ -10,6 +10,19 @@ This reproduces the BS80 Decode measurement. One 8-card Prefill node fills the K
 - The full DeepSeek V4.1 Flash checkpoint. Mount its directory as `MODEL_PATH`. [Hugging Face](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) · [ModelScope](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)
 - The `prompt-128k.jsonl` fixture from the same ZIP. Its only line contains the original benchmark's `input` messages and has SHA-256 `47b8e092d5022551477cff7351ee150e2d086e35d2f49a3d06050356d9e77246`. The serving tokenizer and chat template produce 131,102 tokens, including 131,072 cacheable tokens.
 
+### Standalone CANNBot wheels
+
+The original ARM64 Python 3.12 wheels are available in the [wheel directory](wheels/). Use the direct links below or run the Git LFS command from the root of the `repro/dsv41-r148-dp16ep16` checkout.
+
+| Wheel | SHA-256 |
+| --- | --- |
+| [CANNBot DSL 0.8.2](https://media.githubusercontent.com/media/linfeng-yuan/vllm-ascend/7606dca39815b8ea728d15760c5a7d09cbe0da4d/examples/dsv41_r148_dp16ep16/wheels/cannbot_dsl-0.8.2-cp312-cp312-manylinux_2_17_aarch64.whl) | `d5c8e20185f0697e5e75b76a8f9617496611548995800f3f3d72cc0a613064df` |
+| [CANNBot Arena Net 0.3.0 with attention epilogue](https://media.githubusercontent.com/media/linfeng-yuan/vllm-ascend/7606dca39815b8ea728d15760c5a7d09cbe0da4d/examples/dsv41_r148_dp16ep16/wheels/cannbot_arena_net-0.3.0-cp312-cp312-linux_aarch64.whl) | `78f7dac328a6539ce3f403260731b9996a4802b2bd4ba79ee1cbe02636789589` |
+
+```bash
+git lfs pull --include="examples/dsv41_r148_dp16ep16/wheels/*.whl" origin
+```
+
 ## 2. Prepare the r148 container image
 
 Run this once on an ARM64 host. After loading the base image, the build assembles both archives offline, validates the installed operators, and uses the measured attention epilogue threshold of 384.
