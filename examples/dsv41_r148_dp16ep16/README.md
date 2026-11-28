@@ -4,15 +4,29 @@ This reproduces the BS80 Decode measurement. One 8-card Prefill node fills the K
 
 ## 1. Obtain the matching inputs
 
-- Three ARM64 hosts with eight Ascend 950 cards each, compatible driver and firmware, a working HCCL/Mooncake data network, and host Docker.
-- The A5 Ubuntu ARM64 r148 base image with CANN 9.3.0. Use the SWR image reference below. For an offline installation, load a supplied Docker archive and set `BASE_IMAGE` to its local tag. The expected image ID is `sha256:9722b0304456438355302be279e95e1f2a5e0aa08401d16d19ba35a6a4821a3d`.
-- The supplied `r148-dp16ep16-customer-inputs.zip`. Its `runtime/` directory contains `runtime.tar.gz` and `extras.tar.gz`, checked against [runtime.sha256](runtime.sha256). They provide the integrated Ascend source at `60ece1a4bc09480e014a28a58e6ca4ea7bd22abd`, the compiled native extension, Engram/HIXL, DeepGEMM, Fastokens, the installed `cannbot_dsl 0.8.2` and `cannbot_arena_net 0.3.0` with attention epilogue AOT artifacts, and the installed MegaMHC vendor. The base vLLM revision is `4ba787ec9959e566d3b587a796dff07673324da5`.
+- Three ARM64 hosts with eight Ascend 950 cards each, compatible driver and firmware, and a working HCCL/Mooncake data network. The launch script uses Docker in privileged mode with host networking and needs access to the Ascend device nodes on each host.
+- The A5 Ubuntu ARM64 r148 base image with CANN 9.3.0. Check that your build host can pull the SWR image in section 2. The expected image ID is `sha256:9722b0304456438355302be279e95e1f2a5e0aa08401d16d19ba35a6a4821a3d`.
+- [Download r148-dp16ep16-customer-inputs.zip](https://media.githubusercontent.com/media/linfeng-yuan/vllm-ascend/94a37149d29a38acaf67aebfe8fe72bd0da8d4eb/examples/dsv41_r148_dp16ep16/inputs/r148-dp16ep16-customer-inputs.zip) from the [`inputs/` directory](inputs/). Its `runtime/` directory contains `runtime.tar.gz` and `extras.tar.gz`, checked against [runtime.sha256](runtime.sha256). They provide the integrated Ascend source at `60ece1a4bc09480e014a28a58e6ca4ea7bd22abd`, the compiled native extension, Engram/HIXL, DeepGEMM, Fastokens, the installed `cannbot_dsl 0.8.2` and `cannbot_arena_net 0.3.0` with attention epilogue AOT artifacts, and the installed MegaMHC vendor. The base vLLM revision is `4ba787ec9959e566d3b587a796dff07673324da5`.
 - The full DeepSeek V4.1 Flash checkpoint. Mount its directory as `MODEL_PATH`. [Hugging Face](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) · [ModelScope](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4.1-Flash)
 - The `prompt-128k.jsonl` fixture from the same ZIP. Its only line contains the original benchmark's `input` messages and has SHA-256 `47b8e092d5022551477cff7351ee150e2d086e35d2f49a3d06050356d9e77246`. The serving tokenizer and chat template produce 131,102 tokens, including 131,072 cacheable tokens.
 
+### Download and extract the ZIP
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 git clone --single-branch --branch repro/dsv41-r148-dp16ep16 https://github.com/linfeng-yuan/vllm-ascend.git
+cd vllm-ascend
+curl -fL -o r148-dp16ep16-customer-inputs.zip \
+  'https://media.githubusercontent.com/media/linfeng-yuan/vllm-ascend/94a37149d29a38acaf67aebfe8fe72bd0da8d4eb/examples/dsv41_r148_dp16ep16/inputs/r148-dp16ep16-customer-inputs.zip'
+echo '1226777218db4af3dd605b84a06378d707313b3779cb383657b7f13f252440cf  r148-dp16ep16-customer-inputs.zip' | sha256sum -c -
+export BUNDLE_DIR="$PWD/r148-inputs"
+unzip r148-dp16ep16-customer-inputs.zip -d "$BUNDLE_DIR"
+```
+
+From the repository root, Git LFS can also download the ZIP with `git lfs pull --include="examples/dsv41_r148_dp16ep16/inputs/r148-dp16ep16-customer-inputs.zip" origin`. Verify the same SHA-256 before extracting it.
+
 ### Standalone CANNBot wheels
 
-The original ARM64 Python 3.12 wheels are available in the [wheel directory](wheels/). Use the direct links below or run the Git LFS command from the root of the `repro/dsv41-r148-dp16ep16` checkout.
+The ZIP's runtime archives already include both installed packages. For a standalone installation, get the original ARM64 Python 3.12 wheels from the [wheel directory](wheels/) or use the downloads below.
 
 | Wheel | SHA-256 |
 | --- | --- |
@@ -33,10 +47,11 @@ export BASE_IMAGE=swr.cn-north-12.myhuaweicloud.com/atlas_inference/vllm-ascend:
 docker pull --platform linux/arm64 "$BASE_IMAGE"
 docker image inspect --format '{{.Id}}' "$BASE_IMAGE"
 export IMAGE=dsv41-r148:dp16ep16-bs80
-ARTIFACT_DIR=/path/to/extracted-customer-inputs/runtime
-bash build-image.sh "$ARTIFACT_DIR" "$IMAGE"
+bash build-image.sh "$BUNDLE_DIR/runtime" "$IMAGE"
 docker run --rm --network none --entrypoint bash "$IMAGE" /usr/local/bin/dsv41-check-runtime
 ```
+
+If your build host cannot pull from SWR, obtain a `docker save` archive of the same ARM64 base image through your delivery contact. Load it with `docker load -i /path/to/r148-base.tar`, set `BASE_IMAGE` to the loaded tag, and continue from the image ID check.
 
 Distribute the resulting image to the other nodes through your registry, or with `docker save` and `docker load`. Pin the same image ID on all three nodes. If you were supplied the original prebuilt r148 benchmark image, its epilogue-384 image ID is `sha256:94f03289b6b435dac055de025c4c78747754bac05924cc63436c48c14a184da9`. It already carries the MegaMHC vendor package.
 
@@ -47,7 +62,7 @@ The packaged runtime already provides the historical vendor build. To build it f
 Run the script inside the **base r148 image** with the source inputs mounted read-only. Pass a new build directory on a writable filesystem. The script builds for `ascend950` and extracts the vendor payload to the build directory.
 
 ```bash
-MHC_INPUT=/path/to/mega-mhc-sources
+MHC_INPUT="$BUNDLE_DIR/mega-mhc-sources"
 MHC_OUT=/path/to/shared/mega-mhc-builds
 mkdir -p "$MHC_OUT"
 docker run --rm --network none -v "$PWD:/repro:ro" -v "$MHC_INPUT:/sources:ro" \
@@ -65,6 +80,7 @@ On each host, use the same checkout and image, set the three actual **data-netwo
 ```bash
 export P_IP=192.0.2.10 D0_IP=192.0.2.11 D1_IP=192.0.2.12
 export NPU_NIC_NAME='<local data interface>'
+export IMAGE=dsv41-r148:dp16ep16-bs80  # Set the tag loaded on this host.
 export MODEL_PATH=/models/DeepSeek-V4.1-Flash
 export RUN_DIR=/shared/dsv41-r148/run-01
 export CONTAINER=dsv41-r148-bs80
@@ -88,7 +104,7 @@ For model accuracy evaluation, set D's `enable_force_eplb` to `false` and remove
 
 ## 5. Run the benchmark and check the result
 
-Place the fixture under the shared run directory and run the client on D0. The script waits for all 24 ranks and the proxy, warms P twice, then sends 1,280 requests with 2,048 output tokens each. It waits for a six-second window with 80 active requests on every D rank, zero P work in flight, and zero ongoing D KV fetches.
+Copy `$BUNDLE_DIR/prompt-128k.jsonl` from the extraction host to `$RUN_DIR/prompt-128k.jsonl` in the shared run directory visible to D0, then run the client on D0. The script waits for all 24 ranks and the proxy, warms P twice, then sends 1,280 requests with 2,048 output tokens each. It waits for a six-second window with 80 active requests on every D rank, zero P work in flight, and zero ongoing D KV fetches.
 
 ```bash
 docker exec "$CONTAINER" bash /repro/run.sh bench "$RUN_DIR/prompt-128k.jsonl"
